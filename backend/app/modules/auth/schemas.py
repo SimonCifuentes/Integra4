@@ -11,6 +11,9 @@ def map_role_db_to_public(db_value: str) -> str:
         "superadmin": "super_admin"
     }.get(db_value, "usuario")
 
+# =========================
+# Modelos existentes
+# =========================
 class UserPublic(BaseModel):
     id_usuario: int
     nombre: Optional[str] = None
@@ -45,3 +48,40 @@ class UserUpdate(BaseModel):
     apellido: Optional[str] = Field(default=None, min_length=1, max_length=120)
     telefono: Optional[str] = Field(default=None, max_length=30)
     avatar_url: Optional[str] = Field(default=None, max_length=512)
+
+# =========================
+# Nuevos modelos (faltantes)
+# =========================
+class AccessTokenOnly(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+class RefreshIn(BaseModel):
+    refresh_token: str = Field(..., min_length=20)
+
+class LogoutIn(BaseModel):
+    refresh_token: Optional[str] = Field(None, min_length=20)
+
+class SimpleMsg(BaseModel):
+    detail: str
+
+class VerifyEmailIn(BaseModel):
+    token: str
+
+class ResendVerificationIn(BaseModel):
+    email: EmailStr
+
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+class ChangePasswordIn(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8, max_length=128)
+
+class PushTokenIn(BaseModel):
+    token: str = Field(min_length=20)
+    platform: Optional[Literal["android", "ios", "web"]] = "android"

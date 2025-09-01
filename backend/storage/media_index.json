@@ -1,0 +1,24 @@
+{
+  "local:uploads/3185d3cbf7464a3292ab103abb916a7f_19.png": {
+    "owner_user_id": 7,
+    "provider": "local",
+    "original_name": "19.png",
+    "content_type": "image/png",
+    "status": "stored",
+    "path_or_key": "C:\\Users\\trayssi\\Desktop\\MIO\\UNIVERSIDAD\\SEGUNDO SEMESTRE 2025\\INTEGRACIONIV\\playtemuco\\Integra4\\backend\\storage\\uploads\\3185d3cbf7464a3292ab103abb916a7f_19.png",
+    "public_url": "/uploads/3185d3cbf7464a3292ab103abb916a7f_19.png",
+    "size": 54564,
+    "created_at": 1756615273,
+    "updated_at": 1756615273
+  },
+  "local:uploads/f2f61bf0b6eb42d8b96768c5df963fea_string": {
+    "owner_user_id": 7,
+    "provider": "local",
+    "original_name": "string",
+    "content_type": "application/octet-stream",
+    "status": "presigned",
+    "path_or_key": "/uploads/f2f61bf0b6eb42d8b96768c5df963fea_string",
+    "created_at": 1756615311,
+    "updated_at": 1756615311
+  }
+}

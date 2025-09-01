@@ -16,6 +16,7 @@ from app.modules.favoritos.router import router as favoritos
 from app.modules.denuncias.router import router as denuncias
 from app.modules.admin.router import router as admin
 from app.modules.superadmin.router import router as superadmin
+from app.modules.uploads.router import router as uploads
 
 api_router = APIRouter()
 
@@ -33,6 +34,7 @@ api_router.include_router(resenas)
 api_router.include_router(grupos)
 api_router.include_router(favoritos)
 api_router.include_router(denuncias)
+api_router.include_router(uploads)
 
 # Para estos dos, si dentro NO tienen prefix, mantenlos con prefix aquí:
 api_router.include_router(admin, prefix="/admin")
