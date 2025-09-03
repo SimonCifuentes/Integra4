@@ -4,13 +4,21 @@ from app.api.v1.router import api_router
 
 app = FastAPI(title="SportHubTemuco API")
 
-# CORS (toma de tu settings o .env)
+# Orígenes que realmente usas en dev web con Expo/Metro
+ALLOWED_ORIGINS = [
+    "http://localhost:8081",   # Expo Web (Metro)
+    "http://127.0.0.1:8081",
+    "http://localhost:19006",  # (por si usas el viejo dev server web)
+    "http://127.0.0.1:19006",
+    # agrega otros que veas en consola si cambia el puerto
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173","http://localhost:8000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],   # GET, POST, OPTIONS, etc.
+    allow_headers=["*"],   # content-type, authorization, etc.
 )
 
 app.include_router(api_router, prefix="/api/v1")
