@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState } from 'react';
 import { View, Text, TextInput, Button, Alert } from 'react-native';
 import { useAuth } from '@/src/stores/auth';
-import { AuthAPI } from '@/src/features/auth/api';
+import { AuthAPI } from '@/src/features/features/auth/api';
 import { Link } from 'expo-router';
 
 export default function Perfil() {

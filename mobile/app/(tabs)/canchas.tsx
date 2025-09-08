@@ -1,5 +1,6 @@
 ﻿import { View, Text, FlatList, ActivityIndicator } from "react-native";
-import { useCanchas } from "@/src/features/canchas/hooks";
+import { useCanchas } from '../../src/features/features/canchas/hooks';
+// filepath: c:\Users\nachi\OneDrive\Documentos\GitHub\Integra4\mobile\app\(tabs)\canchas.tsx
 export default function Canchas(){
   const { data, isLoading } = useCanchas({ page:1, page_size:20 });
   if (isLoading) return <ActivityIndicator style={{marginTop:32}} />;

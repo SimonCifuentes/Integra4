@@ -1,7 +1,7 @@
 ﻿import { View, Text, Button } from 'react-native';
 import { useAuth } from '@/src/stores/auth';
 import { router } from 'expo-router';
-import { AuthAPI } from '@/src/features/auth/api';
+import { AuthAPI } from '@/src/features/features/auth/api';
 
 export default function Home() {
   const { user, logout } = useAuth();
