@@ -1,178 +1,236 @@
-<<<<<<< HEAD
-﻿import { View, Text, Button } from 'react-native';
-import { useAuth } from '@/src/stores/auth';
-import { router } from 'expo-router';
-import { AuthAPI } from '@/src/features/auth/api';
+﻿// app/(tabs)/index.tsx
+import { useRef, useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Image,
+  Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+} from "react-native";
+import { useAuth } from "@/src/stores/auth";
+import { router } from "expo-router";
+
+const { width } = Dimensions.get("window");
+
+type Slide = { id: string; title: string; subtitle?: string; image: any };
+
+function Carousel({ slides, autoMs = 4000 }: { slides: Slide[]; autoMs?: number }) {
+  const scrollRef = useRef<ScrollView>(null);
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const next = (index + 1) % slides.length;
+      scrollRef.current?.scrollTo({ x: next * width, animated: true });
+      setIndex(next);
+    }, autoMs);
+    return () => clearInterval(id);
+  }, [index, slides.length, autoMs]);
+
+  const onMomentumEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const newIndex = Math.round(e.nativeEvent.contentOffset.x / width);
+    setIndex(newIndex);
+  };
+
+  return (
+    <View style={{ width, height: 180, marginTop: 12 }}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onMomentumEnd}
+        style={{ width, height: 180 }}
+      >
+        {slides.map((s) => (
+          <View key={s.id} style={{ width, height: 180, paddingHorizontal: 16 }}>
+            <View style={{ flex: 1, borderRadius: 16, overflow: "hidden", backgroundColor: "#0ea5e9" }}>
+              <Image
+                source={s.image}
+                resizeMode="cover"
+                style={{ width: "100%", height: "100%", position: "absolute", opacity: 0.9 }}
+              />
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: "rgba(0,0,0,0.25)",
+                  padding: 12,
+                  justifyContent: "flex-end",
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 18 }}>{s.title}</Text>
+                {s.subtitle ? <Text style={{ color: "#e5e7eb", fontSize: 12 }}>{s.subtitle}</Text> : null}
+              </View>
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+
+      <View
+        style={{
+          position: "absolute",
+          bottom: 10,
+          left: 0,
+          right: 0,
+          flexDirection: "row",
+          justifyContent: "center",
+          gap: 6,
+        }}
+      >
+        {slides.map((_, i) => (
+          <View
+            key={i}
+            style={{
+              width: i === index ? 10 : 8,
+              height: i === index ? 10 : 8,
+              borderRadius: 10,
+              backgroundColor: i === index ? "#fff" : "rgba(255,255,255,0.6)",
+            }}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
 
 export default function Home() {
-  const { user, logout } = useAuth();
-  const doLogout = async () => {
-    try { await AuthAPI.logout(); } catch {}
-    await logout();
-    router.replace('/(auth)/login');
-  };
-  return (
-    <View style={{ flex:1, padding:16, justifyContent:'center', gap:12 }}>
-      <Text style={{ fontSize:18 }}>Hola, {user?.nombre} 👋</Text>
-      <Button title="Cerrar sesión" onPress={doLogout} />
-    </View>
-  );
-}
-=======
-import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
-import { FlatList, ListRenderItem, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
+  const { user } = useAuth();
 
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-
-import HeroCarousel from '@/components/HeroCarousel';
-import { grid, homeStyles as styles } from '@/styles/style';
-
-/** ---- Datos mock ---- */
-const featuredPitches = [
-  { id: 'c1', name: 'Complejo Amanecer', sport: 'Fútbol 7', rating: 4.7, price: 12000, img: require('@/assets/images/logo_principal.png') },
-  { id: 'c2', name: 'Estadio Ñielol', sport: 'Fútbol 11', rating: 4.5, price: 18000, img: require('@/assets/images/partial-react-logo.png') },
-  { id: 'c3', name: 'Polideportivo Labranza', sport: 'Básquetbol', rating: 4.6, price: 9000, img: require('@/assets/images/partial-react-logo.png') },
-  { id: 'c4', name: 'Cancha Pichi Cautín', sport: 'Tenis', rating: 4.3, price: 7000, img: require('@/assets/images/partial-react-logo.png') },
-];
-
-/** ---- Slides del carrusel ---- */
-const heroSlides = [
-  {
-    id: 's1',
-    image: require('@/assets/images/logo_principal.png'), // <- tu imagen generada
-    title: 'Encuentra tu cancha',
-    subtitle: 'Temuco · Mapas, reservas y eventos',
-  },
-  // puedes agregar más slides aquí si quieres
-];
-
-/** ---- Pantalla principal ---- */
-export default function HomeScreen() {
-  const router = useRouter();
-  const { width } = useWindowDimensions();
-
-  
-  const headerHeight = Math.round((width || 360) * 9 / 16);
-
-  const renderPitch: ListRenderItem<(typeof featuredPitches)[number]> = ({ item }) => (
-    <View style={grid.col2Item}>
-      <PitchCard
-        name={item.name}
-        sport={item.sport}
-        rating={item.rating}
-        price={item.price}
-        img={item.img}
-        onPress={() => router.push(`/recinto/${item.id}`)}
-      />
-    </View>
-  );
+  const slides: Slide[] = [
+    {
+      id: "logo",
+      title: "PlayTemuco",
+      subtitle: "Reserva, paga y juega en minutos",
+      image: require("@/assets/images/logo_principal.png"),
+    },
+    {
+      id: "centro",
+      title: "Centro de Temuco",
+      subtitle: "Canchas cercanas a tu ubicación",
+      image: require("@/assets/images/logo_principal.png"),
+    },
+    {
+      id: "becker",
+      title: "Estadio Germán Becker",
+      subtitle: "Zonas deportivas destacadas",
+      image: require("@/assets/images/logo_principal.png"),
+    },
+    {
+      id: "nielol",
+      title: "Cerro Ñielol",
+      subtitle: "Encuentra canchas por sector",
+      image: require("@/assets/images/logo_principal.png"),
+    },
+  ];
 
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-                     
-      headerImage={<HeroCarousel slides={heroSlides} height={headerHeight} />}
-    >
-      {/* Título + subtítulo */}
-      <ThemedView style={styles.headerTextBlock}>
-        <ThemedText type="title">SportHub Temuco</ThemedText>
-        <ThemedText>
-          Reserva canchas, únete a eventos y descubre recintos cerca de ti.
-        </ThemedText>
-      </ThemedView>
+    <ScrollView style={{ flex: 1, backgroundColor: "#fff" }}>
+      {/* Header + Carrusel */}
+      <View style={{ padding: 16, backgroundColor: "#0d9488" }}>
+        <Text style={{ fontSize: 20, fontWeight: "600", color: "#fff" }}>
+          Hola, {user?.name ?? user?.email ?? "Jugador"} 👋
+        </Text>
+        <Text style={{ fontSize: 14, color: "#e0f2f1" }}>¿Listo para reservar tu próxima cancha?</Text>
+        <Carousel slides={slides} />
+      </View>
 
       {/* Buscador */}
-      <ThemedView style={styles.searchCard}>
-        <Ionicons name="search" size={20} style={styles.searchIcon} />
+      <View style={{ padding: 16 }}>
         <TextInput
-          placeholder="Buscar por recinto, deporte o sector…"
-          placeholderTextColor="#999"
-          style={styles.searchInput}
-          returnKeyType="search"
-          onSubmitEditing={({ nativeEvent }) => {
-            const q = nativeEvent.text?.trim();
-            if (q?.length) router.push({ pathname: '/explorar', params: { q } });
+          placeholder="Buscar canchas por deporte o ubicación..."
+          style={{
+            backgroundColor: "#f1f5f9",
+            borderRadius: 12,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            borderWidth: 1,
+            borderColor: "#cbd5e1",
           }}
         />
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push('/explorar')}
-          style={({ pressed }) => [styles.filterBtn, pressed && { opacity: 0.7 }]}
-        >
-          <Ionicons name="options-outline" size={18} />
-        </Pressable>
-      </ThemedView>
-
-      {/* Accesos rápidos */}
-      <ThemedView style={styles.quickGrid}>
-        <QuickAction label="Reservar" icon="calendar-outline" onPress={() => router.push('/reservas/nueva')} />
-        <QuickAction label="Mapa" icon="map-outline" onPress={() => router.push('/mapa')} />
-        <QuickAction label="Eventos" icon="trophy-outline" onPress={() => router.push('/eventos')} />
-        <QuickAction label="Mis reservas" icon="ticket-outline" onPress={() => router.push('/mis-reservas')} />
-      </ThemedView>
-
-      {/* Canchas destacadas (grid) */}
-      <SectionHeader title="Canchas destacadas" onSeeAll={() => router.push('/explorar')} />
-      <FlatList
-        data={featuredPitches}
-        keyExtractor={(it) => it.id}
-        renderItem={renderPitch}
-        numColumns={2}
-        columnWrapperStyle={{ gap: 12 }}
-        ItemSeparatorComponent={() => <View style={grid.separator} />}
-        contentContainerStyle={{ paddingBottom: 16 }}
-        scrollEnabled={false} // porque está dentro de ParallaxScrollView
-      />
-    </ParallaxScrollView>
-  );
-}
-
-/** ---- Subcomponentes ---- */
-
-function SectionHeader({ title, onSeeAll }: { title: string; onSeeAll?: () => void }) {
-  return (
-    <ThemedView style={styles.sectionHeader}>
-      <ThemedText type="subtitle">{title}</ThemedText>
-      {onSeeAll ? (
-        <Pressable onPress={onSeeAll} accessibilityRole="button">
-          <ThemedText type="link">Ver todo</ThemedText>
-        </Pressable>
-      ) : null}
-    </ThemedView>
-  );
-}
-
-function QuickAction({ label, icon, onPress }: { label: string; icon: React.ComponentProps<typeof Ionicons>['name']; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [styles.quickItem, pressed && { transform: [{ scale: 0.98 }] }]}>
-      <ThemedView style={styles.quickIconWrap}>
-        <Ionicons name={icon} size={22} />
-      </ThemedView>
-      <ThemedText type="defaultSemiBold" style={styles.quickLabel}>{label}</ThemedText>
-    </Pressable>
-  );
-}
-
-function PitchCard({ name, sport, rating, price, img, onPress }: { name: string; sport: string; rating: number; price: number; img: any; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [styles.pitchCard, pressed && { opacity: 0.8 }]}>
-      <Image source={img} style={styles.pitchImg} contentFit="cover" />
-      <View style={{ padding: 10, gap: 4 }}>
-        <ThemedText type="defaultSemiBold" numberOfLines={1}>{name}</ThemedText>
-        <ThemedText style={{ opacity: 0.8 }}>{sport}</ThemedText>
-        <View style={styles.pitchMetaRow}>
-          <View style={styles.ratingRow}>
-            <Ionicons name="star" size={14} />
-            <ThemedText> {rating.toFixed(1)}</ThemedText>
-          </View>
-          <ThemedText type="defaultSemiBold">${price.toLocaleString('es-CL')}</ThemedText>
-        </View>
       </View>
-    </Pressable>
+
+      {/* Acceso rápido */}
+      <View style={{ flexDirection: "row", justifyContent: "space-around", marginBottom: 20 }}>
+        <TouchableOpacity
+          style={{ backgroundColor: "#e0f2fe", padding: 20, borderRadius: 16, alignItems: "center", width: "28%" }}
+          onPress={() => router.push("/(tabs)/explorar")}
+        >
+          <Text style={{ fontWeight: "600", color: "#0369a1" }}>Explorar</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={{ backgroundColor: "#fef9c3", padding: 20, borderRadius: 16, alignItems: "center", width: "28%" }}
+          onPress={() => router.push("/(tabs)/reservas")}
+        >
+          <Text style={{ fontWeight: "600", color: "#854d0e" }}>Reservas</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={{ backgroundColor: "#ede9fe", padding: 20, borderRadius: 16, alignItems: "center", width: "28%" }}
+          onPress={() => router.push("/(tabs)/perfil")}
+        >
+          <Text style={{ fontWeight: "600", color: "#6d28d9" }}>Perfil</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Canchas destacadas + VER MÁS */}
+      <View style={{ paddingHorizontal: 16, marginBottom: 24 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+          <Text style={{ fontSize: 18, fontWeight: "700" }}>Canchas destacadas</Text>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            onPress={() => router.push("/(tabs)/canchas")}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={{ color: "#0ea5a4", fontWeight: "700" }}>Ver más</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {[1, 2, 3].map((i) => (
+            <TouchableOpacity
+              key={i}
+              style={{
+                width: 180,
+                height: 120,
+                backgroundColor: "#f1f5f9",
+                borderRadius: 12,
+                marginRight: 12,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontWeight: "600" }}>Cancha {i}</Text>
+              <Text style={{ fontSize: 12, color: "#64748b" }}>Fútbol / Temuco</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Próximos eventos */}
+      <View style={{ paddingHorizontal: 16, marginBottom: 24 }}>
+        <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>Próximos eventos</Text>
+        {[1, 2].map((i) => (
+          <TouchableOpacity
+            key={i}
+            style={{
+              backgroundColor: "#f8fafc",
+              borderWidth: 1,
+              borderColor: "#e2e8f0",
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ fontWeight: "600" }}>Evento deportivo {i}</Text>
+            <Text style={{ fontSize: 12, color: "#64748b" }}>Domingo 18:00 · Cancha {i}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </ScrollView>
   );
 }
->>>>>>> 955eb85 (View)
