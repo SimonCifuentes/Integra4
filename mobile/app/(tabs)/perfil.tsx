@@ -1,13 +1,8 @@
-﻿// app/perfil.tsx
-import { useState } from "react";
-import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Alert
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useAuth, type Usuario } from "@/src/stores/auth";
-// Si ya tienes AuthAPI con updateMe(), lo puedes importar y usar en save()
+﻿import { useEffect, useState } from 'react';
+import { View, Text, TextInput, Button, Alert } from 'react-native';
+import { useAuth } from '@/src/stores/auth';
+import { AuthAPI } from '@/src/features/features/auth/api';
+import { Link } from 'expo-router';
 
 // ------- Tipos (mock) -------
 type Reserva = { id:number; cancha:string; fecha:string; estado:"confirmada"|"pendiente"|"cancelada" };

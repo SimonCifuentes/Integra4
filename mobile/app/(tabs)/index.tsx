@@ -1,18 +1,7 @@
-﻿// app/(tabs)/index.tsx
-import { useRef, useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Image,
-  Dimensions,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
-} from "react-native";
-import { useAuth } from "@/src/stores/auth";
-import { router } from "expo-router";
+﻿import { View, Text, Button } from 'react-native';
+import { useAuth } from '@/src/stores/auth';
+import { router } from 'expo-router';
+import { AuthAPI } from '@/src/features/features/auth/api';
 
 const { width } = Dimensions.get("window");
 

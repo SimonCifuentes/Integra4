@@ -1,77 +1,9 @@
-﻿// app/(tabs)/canchas.tsx
-import { useMemo, useState } from "react";
-import {
-  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-
-// ----- MOCK DATA (reemplaza con tu API) -----
-type Complejo = {
-  id: number;
-  nombre: string;
-  direccion: string;
-  comuna: string;
-  deportes: string[];
-  rating?: number;
-  canchas: number;
-};
-
-type Cancha = {
-  id: number;
-  complejoId: number;
-  complejoNombre: string;
-  deporte: string;
-  tipo: "Fútbol 5" | "Fútbol 7" | "Pádel" | "Tenis" | "Básquetbol";
-  superficie?: string; // pasto sintético, arcilla, etc
-  precioDesde: number; // CLP/hora
-  disponibleHoy: boolean;
-  sector: string;
-};
-
-const MOCK_COMPLEJOS: Complejo[] = [
-  { id: 1, nombre: "Complejo Ñielol", direccion: "Av. Alemania 1234", comuna: "Temuco", deportes: ["Fútbol", "Pádel"], rating: 4.6, canchas: 6 },
-  { id: 2, nombre: "Estadio Germán Becker", direccion: "Av. Pablo Neruda 0110", comuna: "Temuco", deportes: ["Fútbol"], rating: 4.8, canchas: 4 },
-  { id: 3, nombre: "Labranza Sport", direccion: "Ruta S-40, km 8", comuna: "Labranza", deportes: ["Pádel", "Tenis"], rating: 4.3, canchas: 5 },
-];
-
-const MOCK_CANCHAS: Cancha[] = [
-  { id: 101, complejoId: 1, complejoNombre: "Complejo Ñielol", deporte: "Fútbol", tipo: "Fútbol 7", superficie: "Pasto sintético", precioDesde: 18000, disponibleHoy: true,  sector: "Centro" },
-  { id: 102, complejoId: 1, complejoNombre: "Complejo Ñielol", deporte: "Pádel",  tipo: "Pádel",     superficie: "Sintética",        precioDesde: 16000, disponibleHoy: false, sector: "Centro" },
-  { id: 201, complejoId: 2, complejoNombre: "Germán Becker",    deporte: "Fútbol", tipo: "Fútbol 8", superficie: "Pasto natural",   precioDesde: 22000, disponibleHoy: true,  sector: "Centro" },
-  { id: 301, complejoId: 3, complejoNombre: "Labranza Sport",   deporte: "Pádel",  tipo: "Pádel",     superficie: "Sintética",        precioDesde: 15000, disponibleHoy: true,  sector: "Labranza" },
-  { id: 302, complejoId: 3, complejoNombre: "Labranza Sport",   deporte: "Tenis",  tipo: "Tenis",     superficie: "Arcilla",          precioDesde: 17000, disponibleHoy: false, sector: "Labranza" },
-];
-
-// ----- UI -----
-export default function CanchasScreen() {
-  const [tab, setTab] = useState<"complejos" | "canchas">("complejos");
-  const [q, setQ] = useState("");
-  const [fDeporte, setFDeporte] = useState<string | null>(null);
-  const [fSector, setFSector] = useState<string | null>(null);
-  const [fFecha, setFFecha] = useState<string | null>(null); // placeholder texto
-
-  // Opciones ficticias; puedes poblar con la API
-  const deportes = ["Fútbol", "Pádel", "Tenis", "Básquetbol"];
-  const sectores = ["Centro", "Ñielol", "Labranza"];
-
-  const complejosFiltrados = useMemo(() => {
-    return MOCK_COMPLEJOS.filter(c =>
-      (q ? (c.nombre + " " + c.direccion + " " + c.comuna).toLowerCase().includes(q.toLowerCase()) : true) &&
-      (fDeporte ? c.deportes.includes(fDeporte) : true) &&
-      (fSector ? c.comuna.toLowerCase().includes(fSector.toLowerCase()) : true)
-    );
-  }, [q, fDeporte, fSector]);
-
-  const canchasFiltradas = useMemo(() => {
-    return MOCK_CANCHAS.filter(c =>
-      (q ? (c.complejoNombre + " " + c.tipo + " " + c.deporte + " " + c.sector).toLowerCase().includes(q.toLowerCase()) : true) &&
-      (fDeporte ? c.deporte === fDeporte : true) &&
-      (fSector ? c.sector === fSector : true)
-      // fFecha podría enviar al backend para disponibilidad por fecha/hora
-    ).sort((a, b) => Number(b.disponibleHoy) - Number(a.disponibleHoy)); // disponibles primero
-  }, [q, fDeporte, fSector, fFecha]);
-
+﻿import { View, Text, FlatList, ActivityIndicator } from "react-native";
+import { useCanchas } from '../../src/features/features/canchas/hooks';
+// filepath: c:\Users\nachi\OneDrive\Documentos\GitHub\Integra4\mobile\app\(tabs)\canchas.tsx
+export default function Canchas(){
+  const { data, isLoading } = useCanchas({ page:1, page_size:20 });
+  if (isLoading) return <ActivityIndicator style={{marginTop:32}} />;
   return (
     <ScrollView style={{ flex: 1, backgroundColor: "#fff" }} contentContainerStyle={{ paddingBottom: 24 }}>
       {/* Header integrado */}

@@ -1,17 +1,10 @@
 ﻿// app/(auth)/login.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Animated, Easing, Switch,
-} from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
-import { useLogin } from "@/src/features/features/auth/hooks";
-import { useAuth } from "@/src/stores/auth";
-
-const DEV_BYPASS_AUTH = __DEV__ && true; // cambia a false si no quieres bypass en dev
+import { useState } from 'react';
+import { View, TextInput, Button, Text, ActivityIndicator } from 'react-native';
+import { useLogin } from '../../src/features/features/auth/hooks';
+// filepath: c:\Users\nachi\OneDrive\Documentos\GitHub\Integra4\mobile\app\(auth)\login.tsx
+import { useAuth } from '../../src/stores/auth';
+import { router } from 'expo-router';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("demo@demo.cl");
