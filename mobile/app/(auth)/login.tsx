@@ -11,16 +11,19 @@ import { router } from "expo-router";
 import { useLogin } from "@/src/features/features/auth/hooks";
 import { useAuth } from "@/src/stores/auth";
 
-const DEV_BYPASS_AUTH = __DEV__ && true; // cambia a false si no quieres bypass en dev
+// 🔒 Desactiva el bypass por completo
+const DEV_BYPASS_AUTH = false;
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState("demo@demo.cl");
-  const [password, setPassword] = useState("demo123");
+  // Sugerencia: deja prellenado con un usuario seed real de tu DB si quieres
+  const [email, setEmail] = useState("user@playtemuco.cl");
+  const [password, setPassword] = useState("Cambiar.123");
+
   const [showPass, setShowPass] = useState(false);
-  const [remember, setRemember] = useState(true);
+  const [remember, setRemember] = useState(true); // si tu setSession maneja "remember", puedes usarlo
   const [error, setError] = useState<string | null>(null);
 
-  const login = useLogin(); // TanStack v5
+  const login = useLogin(); // TanStack v5: mutateAsync → POST /auth/login
   const setSession = useAuth((s) => s.setSession);
 
   // Animación suave del hero
@@ -44,30 +47,27 @@ export default function LoginScreen() {
     Haptics.selectionAsync();
     setError(null);
 
-    if (DEV_BYPASS_AUTH) {
-      await setSession("dev-token", {
-        id_usuario: 1,
-        nombre: "Demo",
-        apellido: "Local",
-        email,
-        telefono: null,
-        avatar_url: null,
-        rol: "user",
-      });
-      router.replace("/"); // sin tabs
-      return;
-    }
-
     try {
+      // 👉 Llama a tu API real a través del hook
       const { access_token, user } = await login.mutateAsync({ email, password });
-      await setSession(access_token, user);
+
+      // 👉 Guarda la sesión (el store debe encargarse de persistir el token en SecureStore)
+      await setSession(access_token, user, { remember }); // si tu setSession recibe opciones
+
+      // Vibración suave de éxito (opcional)
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      // Redirige al home (ajusta si usas tabs)
       router.replace("/");
     } catch (e: any) {
+      // Manejo de errores “amigable”
       const msg =
         e?.response?.data?.detail ||
+        e?.response?.data?.message ||
         e?.message ||
         "No se pudo iniciar sesión. Verifica tus credenciales.";
       setError(msg);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   };
 
@@ -189,16 +189,7 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Bypass DEV visible */}
-          {DEV_BYPASS_AUTH && (
-            <TouchableOpacity
-              onPress={doSubmit}
-              style={[styles.devBtn, { marginTop: 16 }]}
-            >
-              <Ionicons name="rocket-outline" size={16} color="#0ea5a4" />
-              <Text style={styles.devBtnText}>Entrar rápido (DEV sin backend)</Text>
-            </TouchableOpacity>
-          )}
+          {/* ❌ Eliminado el botón de bypass DEV */}
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -298,17 +289,4 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   errorText: { color: "#b91c1c", flex: 1 },
-
-  devBtn: {
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: "#ecfeff",
-    borderWidth: 1,
-    borderColor: "#a5f3fc",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  devBtnText: { color: "#0ea5a4", fontWeight: "700" },
 });

@@ -7,7 +7,7 @@ app = FastAPI(title="SportHubTemuco API")
 # CORS (toma de tu settings o .env)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173","http://localhost:8000"],
+    allow_origins=["http://localhost:5173","http://localhost:8000","http://localhost:8081" ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

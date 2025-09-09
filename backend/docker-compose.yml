@@ -23,7 +23,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/sporthubtemuco
       - JWT_SECRET=d91ee074-3358-4a9a-ab7a-fddfe1a56a92
-      - CORS_ORIGINS=["http://localhost:5173","http://localhost:8000"]
+      - CORS_ORIGINS=["http://localhost:5173","http://localhost:8000","http://localhost:8081","http://127.0.0.1:8081"]
     ports:
       - "8000:8000"
     depends_on:
