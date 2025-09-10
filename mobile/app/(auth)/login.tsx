@@ -5,6 +5,7 @@ import { useLogin } from '../../src/features/features/auth/hooks';
 // filepath: c:\Users\nachi\OneDrive\Documentos\GitHub\Integra4\mobile\app\(auth)\login.tsx
 import { useAuth } from '../../src/stores/auth';
 import { router } from 'expo-router';
+import { Link } from 'expo-router';
 
 export default function LoginScreen() {
   const [email,    setEmail]    = useState('demo@demo.cl');
@@ -62,6 +63,9 @@ export default function LoginScreen() {
         onPress={onSubmit}
         disabled={login.isPending}
       />
+      <Link href='/(auth)/register' style={{ marginTop: 12 }}>
+  ¿No tienes cuenta? Crea una aquí
+</Link>
     </View>
   );
 }

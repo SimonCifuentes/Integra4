@@ -7,3 +7,6 @@ export function useMe() {
 export function useLogin() {
   return useMutation({ mutationFn: AuthAPI.login });
 }
+export function useRegister() {
+  return useMutation({ mutationFn: AuthAPI.register });
+}
