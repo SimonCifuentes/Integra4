@@ -1,6 +1,6 @@
 ﻿// app/(owner)/_layout.tsx
 import { Stack } from 'expo-router';
-import { AuthGate, RoleGate } from '@/src/utils/guards';
+//import { AuthGate, RoleGate } from '@/src/utils/guards';
 export default function OwnerLayout() {
   return (
     <AuthGate>
