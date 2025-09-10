@@ -3,6 +3,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 
 app = FastAPI(title="SportHubTemuco API")
+from fastapi import FastAPI
+
+app = FastAPI(
+    title="SportHubTemuco API",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+)
+
 
 # Orígenes que realmente usas en dev web con Expo/Metro
 ALLOWED_ORIGINS = [
@@ -15,7 +24,7 @@ ALLOWED_ORIGINS = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["http://localhost:5173","http://localhost:8000","http://localhost:8081" ],
     allow_credentials=True,
     allow_methods=["*"],   # GET, POST, OPTIONS, etc.
     allow_headers=["*"],   # content-type, authorization, etc.
