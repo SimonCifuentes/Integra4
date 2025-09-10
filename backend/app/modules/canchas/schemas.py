@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Optional, Literal, List, Annotated
 from pydantic import BaseModel, Field
+from pydantic import AliasChoices  # <-- para alias 'techada' en Query
 
 # Tipos con restricciones (Pydantic v2)
 Lat = Annotated[float, Field(ge=-90, le=90)]
@@ -33,7 +34,16 @@ class CanchasQuery(BaseModel):
     q: Optional[str] = Field(None, description="Texto libre en nombre de cancha")
     id_complejo: Optional[int] = Field(None, description="Filtra por complejo")
     deporte: Optional[str] = Field(None, description="Nombre del deporte")
-    cubierta: Optional[bool] = Field(None, description="Solo techadas/no techadas")
+    # Acepta 'cubierta' o 'techada' como nombre de parámetro
+    cubierta: Optional[bool] = Field(
+        default=None,
+        description="Solo techadas/no techadas (alias: techada)",
+        validation_alias=AliasChoices("cubierta", "techada"),
+    )
+    iluminacion: Optional[bool] = Field(
+        default=None,
+        description="Solo con/sin iluminación (requiere columna canchas.iluminacion)",
+    )
     max_precio: Optional[NonNegMoney] = Field(None, description="Precio por hora máximo (regla vigente mínima)")
     lat: Optional[Lat] = None
     lon: Optional[Lon] = None
