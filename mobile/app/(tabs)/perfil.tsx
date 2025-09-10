@@ -1,14 +1,18 @@
-﻿import { useEffect, useState } from 'react';
-import { View, Text, TextInput, Button, Alert } from 'react-native';
-import { useAuth } from '@/src/stores/auth';
-import { AuthAPI } from '@/src/features/features/auth/api';
-import { Link } from 'expo-router';
+// app/perfil.tsx
+import { useEffect, useMemo, useState } from "react";
+import {
+  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  ScrollView, Alert
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import { useAuth, type Usuario } from "@/src/stores/auth";
 
-// ------- Tipos (mock) -------
+// ------- Tipos (mock solo para reservas/grupos visual) -------
 type Reserva = { id:number; cancha:string; fecha:string; estado:"confirmada"|"pendiente"|"cancelada" };
 type Grupo   = { id:number; nombre:string; rol:"miembro"|"admin" };
 
-// ------- Datos mock (quítalos cuando conectes tu API) -------
+// ------- Datos mock (quítalos cuando conectes tus endpoints reales) -------
 const MOCK_RESERVAS: Reserva[] = [
   { id:1, cancha:"Cancha 1 - Temuco",   fecha:"Dom 18:00, 22 Sep", estado:"confirmada" },
   { id:2, cancha:"Cancha 2 - Labranza", fecha:"Mié 21:00, 25 Sep", estado:"pendiente"  },
@@ -19,36 +23,89 @@ const MOCK_GRUPOS: Grupo[] = [
   { id:2, nombre:"Pádel Temuco",    rol:"admin"   },
 ];
 
-export default function PerfilScreen() {
-  const { user, setUser, logout } = useAuth();
+// ------- Helpers de Rol -------
+function getRoleLabel(rol?: string) {
+  const r = (rol || "").toLowerCase();
+  if (r === "superadmin") return "Superadmin";
+  if (r === "owner" || r === "dueño" || r === "dueno") return "Dueño de complejos";
+  if (r === "admin" || r === "admin_general") return "Admin general";
+  if (r === "admin_grupos" || r === "admin:grupos" || r === "groups_admin") return "Admin de grupos";
+  return "Usuario";
+}
 
-  // Estado local editable
-  const [form, setForm] = useState<Usuario>(() => ({
-    id_usuario:  user?.id_usuario ?? 1,
-    nombre:      user?.nombre ?? "Demo",
-    apellido:    user?.apellido ?? "Local",
-    email:       user?.email ?? "demo@demo.cl",
-    telefono:    user?.telefono ?? "",
+function getRoleColors(rol?: string) {
+  const r = (rol || "").toLowerCase();
+  if (r === "superadmin") return { bg: "#ffe4e6", fg: "#9f1239" }; // rosa/rojo para superadmin
+  if (r.startsWith("admin") || r === "admin") return { bg: "#fee2e2", fg: "#991b1b" }; // rojo suave
+  if (r === "owner" || r === "dueño" || r === "dueno") return { bg: "#dbeafe", fg: "#1e40af" }; // azul
+  return { bg: "#dcfce7", fg: "#166534" }; // verde (usuario)
+}
+
+function RoleBadge({ rol }: { rol?: string }) {
+  const label = getRoleLabel(rol);
+  const { bg, fg } = getRoleColors(rol);
+  return (
+    <View style={{ backgroundColor:bg, paddingHorizontal:10, paddingVertical:6, borderRadius:999, alignSelf:"flex-start" }}>
+      <Text style={{ color:fg, fontWeight:"800" }}>{label}</Text>
+    </View>
+  );
+}
+
+export default function PerfilScreen() {
+  const { user, setUser, logout, loadSession } = useAuth();
+
+  // Refresca desde la API al montar (hará /auth/me si tu store lo implementa)
+  useEffect(() => {
+    if (typeof loadSession === "function") {
+      loadSession().catch(() => {});
+    }
+  }, [loadSession]);
+
+  // Estado local editable (SIN rol aquí)
+  type FormUsuario = Omit<Usuario, "rol">;
+  const [form, setForm] = useState<FormUsuario>(() => ({
+    id_usuario:  user?.id_usuario ?? 0,
+    nombre:      user?.nombre ?? "",
+    apellido:    user?.apellido ?? "",
+    email:       user?.email ?? "",
+    telefono:    (user?.telefono as any) ?? "",
     avatar_url:  user?.avatar_url ?? null,
-    rol:         user?.rol ?? "user",
   }));
 
-  const onChange = (k: keyof Usuario, v: string | null) =>
-    setForm(prev => ({ ...prev, [k]: v }));
+  // Si el usuario cambia en el store (por ejemplo tras loadSession), sincroniza el form (sin tocar rol)
+  useEffect(() => {
+    if (user) {
+      setForm({
+        id_usuario: user.id_usuario,
+        nombre:     user.nombre ?? "",
+        apellido:   user.apellido ?? "",
+        email:      user.email ?? "",
+        telefono:   (user.telefono as any) ?? "",
+        avatar_url: user.avatar_url ?? null,
+      });
+    }
+  }, [user]);
+
+  const onChange = (k: keyof FormUsuario, v: string | null) =>
+    setForm(prev => ({ ...prev, [k]: v as any }));
 
   const save = async () => {
     try {
       // Cuando conectes backend:
       // const updated = await AuthAPI.updateMe({ nombre: form.nombre, apellido: form.apellido, telefono: form.telefono, email: form.email });
-      // await setUser(updated);
+      // await setUser({ ...user!, ...updated }); // conserva rol del backend
 
-      // Por ahora, persistimos en el store (mock)
-      await setUser(form);
+      // Temporal: conserva el rol actual del store y solo actualiza campos editables
+      await setUser({ ...user!, ...form }); // 👈 no pisamos user.rol
       Alert.alert("Perfil", "Datos guardados correctamente");
-    } catch (e) {
+    } catch {
       Alert.alert("Error", "No se pudieron guardar los cambios");
     }
   };
+
+  // Lee rol robusto desde el store: rol (es) o role (en)
+  const rawRole = (user as any)?.rol ?? (user as any)?.role;
+  const roleLabel = useMemo(() => getRoleLabel(rawRole), [rawRole]);
 
   return (
     <ScrollView style={{ flex:1, backgroundColor:"#fff" }} contentContainerStyle={{ paddingBottom: 28 }}>
@@ -61,7 +118,21 @@ export default function PerfilScreen() {
         <View style={{ width:26 }} />
       </View>
 
-      {/* Formulario de usuario */}
+      {/* Sección: Rol (solo lectura, desde API/Store) */}
+      <Section title="Rol">
+        <View style={{ flexDirection:"row", alignItems:"center", justifyContent:"space-between" }}>
+          <View>
+            <Text style={{ fontWeight:"700" }}>Rol actual</Text>
+            <Text style={{ color:"#6b7280", marginTop:2 }}>{roleLabel}</Text>
+          </View>
+          <RoleBadge rol={rawRole} />
+        </View>
+        <Text style={{ color:"#6b7280" }}>
+          Los permisos en la app dependen de tu rol. Si necesitas cambiarlo, contáctate con un administrador.
+        </Text>
+      </Section>
+
+      {/* Formulario de usuario (sin campo rol) */}
       <Section title="Datos personales">
         <Field label="Nombre"   value={form.nombre}   onChangeText={(v)=>onChange("nombre", v)} />
         <Field label="Apellido" value={form.apellido} onChangeText={(v)=>onChange("apellido", v)} />
@@ -70,7 +141,7 @@ export default function PerfilScreen() {
         <PrimaryButton text="Guardar cambios" onPress={save} />
       </Section>
 
-      {/* Reservas del usuario */}
+      {/* Reservas del usuario (mock visual por ahora) */}
       <Section title="Mis reservas">
         {MOCK_RESERVAS.map(r => (
           <View key={r.id} style={styles.itemRow}>
@@ -83,7 +154,7 @@ export default function PerfilScreen() {
         ))}
       </Section>
 
-      {/* Grupos del usuario */}
+      {/* Grupos del usuario (mock visual) */}
       <Section title="Mis grupos">
         {MOCK_GRUPOS.map(g => (
           <View key={g.id} style={styles.itemRow}>
