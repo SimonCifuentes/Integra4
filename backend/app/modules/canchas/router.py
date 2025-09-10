@@ -28,8 +28,9 @@ router = APIRouter(prefix="/canchas", tags=["canchas"])
     response_model=CanchasListOut,
     summary="Lista canchas",
     description=(
-        "Devuelve canchas con filtros por deporte, techada, precio máximo y cercanas. "
-        "Puedes ordenar por distancia, precio, rating o nombre. "
+        "Devuelve canchas con filtros por **deporte**, **techada** (alias de `cubierta`), "
+        "**iluminación**, **precio máximo** y **cercanas** (`lat`/`lon` + `max_km`).\n\n"
+        "Ordena por `distancia`, `precio`, `rating`, `nombre` o `recientes`.\n"
         "Si envías `lat`/`lon` se calcula `distancia_km` usando PostGIS si está disponible."
     ),
 )
