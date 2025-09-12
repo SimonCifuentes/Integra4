@@ -1,11 +1,72 @@
+<<<<<<< HEAD
 ﻿import { View, Text, FlatList, ActivityIndicator } from "react-native";
 import { useCanchas } from '../../src/features/features/canchas/hooks';
 // filepath: c:\Users\nachi\OneDrive\Documentos\GitHub\Integra4\mobile\app\(tabs)\canchas.tsx
 export default function Canchas(){
   const { data, isLoading } = useCanchas({ page:1, page_size:20 });
   if (isLoading) return <ActivityIndicator style={{marginTop:32}} />;
+=======
+﻿// app/(tabs)/canchas.tsx
+import { useMemo, useState } from "react";
+import {
+  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, RefreshControl,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import { useComplejos } from "@/src/features/features/complejos/hooks";
+import { useCanchas } from "@/src/features/features/canchas/hooks";
+import type { Complejo } from "@/src/features/features/complejos/api";
+import type { Cancha } from "@/src/features/features/canchas/api";
+
+export default function CanchasScreen() {
+  const [tab, setTab] = useState<"complejos" | "canchas">("complejos");
+  const [q, setQ] = useState("");
+  const [fDeporte, setFDeporte] = useState<string | null>(null);
+  const [fSector, setFSector] = useState<string | null>(null);
+  const [fFecha, setFFecha] = useState<string | null>(null);
+
+  // Opciones básicas; si tu API devuelve catálogos, puedes cargarlos allí
+  const deportes = ["Fútbol", "Pádel", "Tenis", "Básquetbol"];
+  const sectores = ["Centro", "Ñielol", "Labranza"];
+
+  // Llamadas a API (paso filtros; si tu backend no soporta alguno, igual filtramos client-side)
+  const complejosQ = useComplejos({ q: q || undefined, deporte: fDeporte || undefined, sector: fSector || undefined });
+  const canchasQ   = useCanchas  ({ q: q || undefined, deporte: fDeporte || undefined, sector: fSector || undefined, fecha: fFecha || undefined });
+
+  const isLoading = (tab === "complejos" ? complejosQ.isLoading : canchasQ.isLoading);
+  const isError   = (tab === "complejos" ? complejosQ.isError   : canchasQ.isError);
+  const refetch   = (tab === "complejos" ? complejosQ.refetch   : canchasQ.refetch);
+  const refreshing = (tab === "complejos" ? complejosQ.isRefetching : canchasQ.isRefetching);
+
+  // Fallback: filtrado en cliente (si la API no filtra todo)
+  const complejos: Complejo[] = useMemo(() => {
+    const list = complejosQ.data ?? [];
+    return list.filter(c =>
+      (q ? ((c.nombre ?? "") + " " + (c.direccion ?? "") + " " + (c.comuna ?? "")).toLowerCase().includes(q.toLowerCase()) : true) &&
+      (fDeporte ? (c.deportes ?? []).includes(fDeporte) : true) &&
+      (fSector ? (c.comuna ?? "").toLowerCase().includes(fSector.toLowerCase()) : true)
+    );
+  }, [complejosQ.data, q, fDeporte, fSector]);
+
+  const canchas: Cancha[] = useMemo(() => {
+    const list = canchasQ.data ?? [];
+    return list.filter(c =>
+      (q ? ((c.complejoNombre ?? "") + " " + (c.tipo ?? "") + " " + (c.deporte ?? "") + " " + (c.sector ?? "")).toLowerCase().includes(q.toLowerCase()) : true) &&
+      (fDeporte ? c.deporte === fDeporte : true) &&
+      (fSector ? c.sector === fSector : true)
+      // fFecha: idealmente lo filtra el backend por disponibilidad
+    ).sort((a, b) => Number(b.disponibleHoy ?? 0) - Number(a.disponibleHoy ?? 0));
+  }, [canchasQ.data, q, fDeporte, fSector, fFecha]);
+
+>>>>>>> 241975d (fix perfil)
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: "#fff" }} contentContainerStyle={{ paddingBottom: 24 }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: "#fff" }}
+      contentContainerStyle={{ paddingBottom: 24 }}
+      refreshControl={
+        <RefreshControl refreshing={!!refreshing} onRefresh={() => refetch()} />
+      }
+    >
       {/* Header integrado */}
       <View style={styles.header}>
         <Text style={styles.title}>Buscar</Text>
@@ -39,7 +100,6 @@ export default function Canchas(){
           icon="football-outline"
           label={fDeporte ?? "Deporte"}
           onPress={() => {
-            // Ejemplo simple de “ciclo” de opciones; en prod, usa un bottom sheet o picker
             const idx = deportes.indexOf(fDeporte ?? "");
             const next = idx < 0 ? deportes[0] : (idx + 1 >= deportes.length ? null : deportes[idx + 1]);
             setFDeporte(next);
@@ -59,10 +119,7 @@ export default function Canchas(){
         <DropdownChip
           icon="calendar-outline"
           label={fFecha ?? "Fecha"}
-          onPress={() => {
-            // TODO: abre date-time picker; por ahora set fijo
-            setFFecha(fFecha ? null : "Hoy");
-          }}
+          onPress={() => setFFecha(fFecha ? null : "Hoy")}
           active={!!fFecha}
         />
         {(fDeporte || fSector || fFecha) && (
@@ -72,54 +129,76 @@ export default function Canchas(){
         )}
       </View>
 
+      {/* Loading / error */}
+      {isLoading && (
+        <View style={{ paddingVertical: 24, alignItems: "center" }}>
+          <ActivityIndicator />
+        </View>
+      )}
+      {isError && (
+        <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+          <Text style={{ color: "#b91c1c" }}>No se pudieron cargar los datos. Reintenta.</Text>
+          <TouchableOpacity onPress={() => refetch()} style={[styles.btnOutline, { marginTop: 8 }]}>
+            <Text style={{ color: "#0ea5a4", fontWeight: "700" }}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Listado */}
-      {tab === "complejos" ? (
-        <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 6 }}>
-          {complejosFiltrados.map(c => (
-            <View key={c.id} style={styles.card}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={styles.roundIcon}><Ionicons name="home-outline" size={16} color="#0ea5a4" /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>{c.nombre}</Text>
-                  <Text style={styles.cardSub}>{c.direccion} · {c.comuna}</Text>
-                  <Text style={styles.cardSub}>Deportes: {c.deportes.join(", ")} · Canchas: {c.canchas}</Text>
-                  {!!c.rating && <Text style={styles.cardSub}>⭐ {c.rating.toFixed(1)}</Text>}
+      {!isLoading && !isError && (
+        tab === "complejos" ? (
+          <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 6 }}>
+            {complejos.map(c => (
+              <View key={c.id} style={styles.card}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={styles.roundIcon}><Ionicons name="home-outline" size={16} color="#0ea5a4" /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardTitle}>{c.nombre}</Text>
+                    <Text style={styles.cardSub}>
+                      {(c.direccion ?? "Dirección desconocida")} · {(c.comuna ?? "—")}
+                    </Text>
+                    {!!c.deportes?.length && (
+                      <Text style={styles.cardSub}>
+                        Deportes: {c.deportes.join(", ")}{typeof c.canchas === "number" ? ` · Canchas: ${c.canchas}` : ""}
+                      </Text>
+                    )}
+                    {typeof c.rating === "number" && <Text style={styles.cardSub}>⭐ {c.rating.toFixed(1)}</Text>}
+                  </View>
+                </View>
+                <View style={styles.cardActions}>
+                  <OutlineBtn text="Ver complejo" onPress={() => router.push(`/(tabs)/complejos/${c.id}`)} />
+                  <PrimaryBtn text="Reservar" onPress={() => router.push(`/(tabs)/complejos/${c.id}`)} />
                 </View>
               </View>
-              <View style={styles.cardActions}>
-                <OutlineBtn text="Ver complejo" onPress={() => router.push(`/(tabs)/complejos/${c.id}`)} />
-                <PrimaryBtn text="Reservar" onPress={() => router.push(`/(tabs)/complejos/${c.id}`)} />
-              </View>
-            </View>
-          ))}
-          {complejosFiltrados.length === 0 && <EmptyState text="No encontramos complejos que coincidan con tu búsqueda." />}
-        </View>
-      ) : (
-        <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 6 }}>
-          {canchasFiltradas.map(c => (
-            <View key={c.id} style={styles.card}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={styles.roundIcon}><Ionicons name="football-outline" size={16} color="#0ea5a4" /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>{c.tipo} · {c.deporte}</Text>
-                  <Text style={styles.cardSub}>{c.complejoNombre} · {c.sector}</Text>
-                  <Text style={styles.cardSub}>
-                    {c.superficie ? `${c.superficie} · ` : ""}Desde ${formatCLP(c.precioDesde)}/h
-                  </Text>
+            ))}
+            {complejos.length === 0 && <EmptyState text="No encontramos complejos que coincidan con tu búsqueda." />}
+          </View>
+        ) : (
+          <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 6 }}>
+            {canchas.map(c => (
+              <View key={c.id} style={styles.card}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={styles.roundIcon}><Ionicons name="football-outline" size={16} color="#0ea5a4" /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardTitle}>{(c.tipo ?? c.deporte) || "—"} · {c.deporte ?? "—"}</Text>
+                    <Text style={styles.cardSub}>{c.complejoNombre ?? "Complejo"} · {c.sector ?? "—"}</Text>
+                    <Text style={styles.cardSub}>
+                      {c.superficie ? `${c.superficie} · ` : ""}{typeof c.precioDesde === "number" ? `Desde ${formatCLP(c.precioDesde)}/h` : ""}
+                    </Text>
+                  </View>
+                  {typeof c.disponibleHoy === "boolean" && (
+                    <Badge text={c.disponibleHoy ? "Hoy disponible" : "Hoy no hay"} tone={c.disponibleHoy ? "success" : "muted"} />
+                  )}
                 </View>
-                <Badge
-                  text={c.disponibleHoy ? "Hoy disponible" : "Hoy no hay"}
-                  tone={c.disponibleHoy ? "success" : "muted"}
-                />
+                <View style={styles.cardActions}>
+                  <OutlineBtn text="Ver complejo" onPress={() => router.push(`/(tabs)/complejos/${c.complejoId}`)} />
+                  <PrimaryBtn text="Reservar" onPress={() => router.push(`/(tabs)/reservar/${c.id}`)} />
+                </View>
               </View>
-              <View style={styles.cardActions}>
-                <OutlineBtn text="Ver complejo" onPress={() => router.push(`/(tabs)/complejos/${c.complejoId}`)} />
-                <PrimaryBtn text="Reservar" onPress={() => router.push(`/(tabs)/reservar/${c.id}`)} />
-              </View>
-            </View>
-          ))}
-          {canchasFiltradas.length === 0 && <EmptyState text="No encontramos canchas con esos filtros." />}
-        </View>
+            ))}
+            {canchas.length === 0 && <EmptyState text="No encontramos canchas con esos filtros." />}
+          </View>
+        )
       )}
     </ScrollView>
   );
@@ -180,7 +259,8 @@ function EmptyState({ text }:{ text:string }) {
   );
 }
 
-function formatCLP(n: number) {
+function formatCLP(n?: number | null) {
+  if (typeof n !== "number") return "";
   try { return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(n); }
   catch { return `$${n.toLocaleString("es-CL")}`; }
 }
