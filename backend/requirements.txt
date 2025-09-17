@@ -4,12 +4,9 @@ sqlalchemy>=2.0
 alembic
 psycopg2-binary
 python-jose[cryptography]
-passlib[bcrypt]
-pydantic
-pydantic-settings
-python-multipart
-email-validator>=2.0.0    # ← agrega esto
 passlib[bcrypt]==1.7.4
-bcrypt==4.0.1
+pydantic
 pydantic-settings>=2.0.3
-psycopg2-binary==2.9.9
+python-multipart
+email-validator>=2.0.0
+bcrypt==4.0.1

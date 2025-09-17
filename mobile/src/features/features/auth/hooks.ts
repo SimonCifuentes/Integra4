@@ -36,3 +36,6 @@ export function useUpdateMe() {
     },
   });
 }
+export function useRegister() {
+  return useMutation({ mutationFn: AuthAPI.register });
+}

@@ -19,6 +19,9 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:8081",
     "http://localhost:19006",  # (por si usas el viejo dev server web)
     "http://127.0.0.1:19006",
+    "http://localhost:3000",   # si usas React en 3000
+    "http://127.0.0.1:3000",
+
     # agrega otros que veas en consola si cambia el puerto
 ]
 
