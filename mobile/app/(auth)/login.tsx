@@ -1,11 +1,15 @@
-// app/(auth)/login.tsx
-import { useState } from 'react';
-import { View, TextInput, Button, Text, ActivityIndicator } from 'react-native';
-import { useLogin } from '../../src/features/features/auth/hooks';
-// filepath: c:\Users\nachi\OneDrive\Documentos\GitHub\Integra4\mobile\app\(auth)\login.tsx
-import { useAuth } from '../../src/stores/auth';
-import { router } from 'expo-router';
-import { Link } from 'expo-router';
+﻿// app/(auth)/login.tsx
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Animated, Easing, Switch,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
+import { useLogin } from "@/src/features/features/auth/hooks";
+import { useAuth } from "@/src/stores/auth";
 
 // 🔒 Desactiva el bypass por completo
 const DEV_BYPASS_AUTH = false;
@@ -187,17 +191,8 @@ export default function LoginScreen() {
 
           {/* ❌ Eliminado el botón de bypass DEV */}
         </View>
-      ) : null}
-
-      <Button
-        title={login.isPending ? 'Ingresando…' : 'Entrar'}
-        onPress={onSubmit}
-        disabled={login.isPending}
-      />
-      <Link href='/(auth)/register' style={{ marginTop: 12 }}>
-  ¿No tienes cuenta? Crea una aquí
-</Link>
-    </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
