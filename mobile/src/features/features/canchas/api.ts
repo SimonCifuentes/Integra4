@@ -1,18 +1,9 @@
 ﻿import { http } from "@/src/services/http";
-
-export type Cancha = {
-  id: number;
-  complejoId: number;         // id del complejo (si tu API devuelve otro nombre, mapea en el hook)
-  complejoNombre?: string;    // opcional: nombre del complejo
-  deporte: string;            // "Fútbol" | "Pádel" | ...
-  tipo?: string;              // "Fútbol 5" | "Pádel" | ...
-  superficie?: string;        // "Pasto sintético", etc.
-  precioDesde?: number | null;
-  disponibleHoy?: boolean;    // si tu API lo calcula, si no puedes omitirlo
-  sector?: string;            // "Centro", etc.
-};
+import { R } from "@/src/config/routes";
+import type { Cancha } from "@/src/types";
 
 export const CanchasAPI = {
-  list: (params?: { q?: string; deporte?: string; sector?: string; fecha?: string }) =>
-    http.get<Cancha[]>("/api/v1/canchas", { params }).then(r => r.data),
+  list: (params?: { deporte?:string; page?:number; page_size?:number }) =>
+    http.get<{ items:Cancha[]; total:number; page:number; page_size:number }>(R.canchas.list, { params }).then(r=>r.data),
+  byId: (id:number) => http.get<Cancha>(R.canchas.byId(id)).then(r=>r.data),
 };

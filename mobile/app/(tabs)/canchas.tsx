@@ -9,70 +9,71 @@ export default function Canchas(){
 ﻿// app/(tabs)/canchas.tsx
 import { useMemo, useState } from "react";
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, RefreshControl,
+  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
+  ActivityIndicator, RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useComplejos } from "@/src/features/features/complejos/hooks";
 import { useCanchas } from "@/src/features/features/canchas/hooks";
-import type { Complejo } from "@/src/features/features/complejos/api";
-import type { Cancha } from "@/src/features/features/canchas/api";
+
+type CanchaBE = {
+  id_cancha: number;
+  nombre: string;
+  deporte?: string;
+  tipo?: string;               // ej: "Fútbol 7", "Pádel"
+  superficie?: string;         // ej: "Pasto sintético"
+  precio_desde?: number;       // CLP/hora
+  disponible_hoy?: boolean;
+  id_complejo?: number;
+  nombre_complejo?: string;
+  sector?: string;             // o comuna/barrio
+};
 
 export default function CanchasScreen() {
-  const [tab, setTab] = useState<"complejos" | "canchas">("complejos");
+  // ✅ misma llamada funcional que tu code base
+  const { data, isLoading, isError, refetch, isRefetching } = useCanchas({ page: 1, page_size: 20 });
+
+  // UI state
   const [q, setQ] = useState("");
   const [fDeporte, setFDeporte] = useState<string | null>(null);
   const [fSector, setFSector] = useState<string | null>(null);
-  const [fFecha, setFFecha] = useState<string | null>(null);
+  const [fFecha, setFFecha] = useState<string | null>(null); // decorativo
 
-  // Opciones básicas; si tu API devuelve catálogos, puedes cargarlos allí
+  // Opciones rápidas (si tu API trae catálogos, reemplaza aquí)
   const deportes = ["Fútbol", "Pádel", "Tenis", "Básquetbol"];
   const sectores = ["Centro", "Ñielol", "Labranza"];
 
-  // Llamadas a API (paso filtros; si tu backend no soporta alguno, igual filtramos client-side)
-  const complejosQ = useComplejos({ q: q || undefined, deporte: fDeporte || undefined, sector: fSector || undefined });
-  const canchasQ   = useCanchas  ({ q: q || undefined, deporte: fDeporte || undefined, sector: fSector || undefined, fecha: fFecha || undefined });
+  // Normaliza items desde el backend (exactamente como tu code)
+  const items: CanchaBE[] = (data?.items ?? []) as CanchaBE[];
 
-  const isLoading = (tab === "complejos" ? complejosQ.isLoading : canchasQ.isLoading);
-  const isError   = (tab === "complejos" ? complejosQ.isError   : canchasQ.isError);
-  const refetch   = (tab === "complejos" ? complejosQ.refetch   : canchasQ.refetch);
-  const refreshing = (tab === "complejos" ? complejosQ.isRefetching : canchasQ.isRefetching);
-
-  // Fallback: filtrado en cliente (si la API no filtra todo)
-  const complejos: Complejo[] = useMemo(() => {
-    const list = complejosQ.data ?? [];
-    return list.filter(c =>
-      (q ? ((c.nombre ?? "") + " " + (c.direccion ?? "") + " " + (c.comuna ?? "")).toLowerCase().includes(q.toLowerCase()) : true) &&
-      (fDeporte ? (c.deportes ?? []).includes(fDeporte) : true) &&
-      (fSector ? (c.comuna ?? "").toLowerCase().includes(fSector.toLowerCase()) : true)
-    );
-  }, [complejosQ.data, q, fDeporte, fSector]);
-
-  const canchas: Cancha[] = useMemo(() => {
-    const list = canchasQ.data ?? [];
-    return list.filter(c =>
-      (q ? ((c.complejoNombre ?? "") + " " + (c.tipo ?? "") + " " + (c.deporte ?? "") + " " + (c.sector ?? "")).toLowerCase().includes(q.toLowerCase()) : true) &&
-      (fDeporte ? c.deporte === fDeporte : true) &&
-      (fSector ? c.sector === fSector : true)
-      // fFecha: idealmente lo filtra el backend por disponibilidad
-    ).sort((a, b) => Number(b.disponibleHoy ?? 0) - Number(a.disponibleHoy ?? 0));
-  }, [canchasQ.data, q, fDeporte, fSector, fFecha]);
+  // Filtros/búsqueda en cliente (no toca la request)
+  const canchas = useMemo(() => {
+    return items
+      .filter(c =>
+        (q
+          ? ((c.nombre_complejo ?? "") + " " + (c.tipo ?? "") + " " + (c.deporte ?? "") + " " + (c.sector ?? "") + " " + (c.nombre ?? ""))
+              .toLowerCase()
+              .includes(q.toLowerCase())
+          : true) &&
+        (fDeporte ? (c.deporte === fDeporte) : true) &&
+        (fSector ? (c.sector === fSector) : true)
+      )
+      .sort((a, b) => Number(b.disponible_hoy ?? 0) - Number(a.disponible_hoy ?? 0));
+  }, [items, q, fDeporte, fSector]);
 
 >>>>>>> 241975d (fix perfil)
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: "#fff" }}
       contentContainerStyle={{ paddingBottom: 24 }}
-      refreshControl={
-        <RefreshControl refreshing={!!refreshing} onRefresh={() => refetch()} />
-      }
+      refreshControl={<RefreshControl refreshing={!!isRefetching} onRefresh={() => refetch()} />}
     >
       {/* Header integrado */}
       <View style={styles.header}>
         <Text style={styles.title}>Buscar</Text>
+        {/* Tabs visuales simplificados: solo “Canchas” activa (puedes reactivar Complejos más adelante) */}
         <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-          <Segment label="Complejos" active={tab === "complejos"} onPress={() => setTab("complejos")} />
-          <Segment label="Canchas"   active={tab === "canchas"}   onPress={() => setTab("canchas")} />
+          <Segment label="Canchas" active onPress={() => {}} />
         </View>
       </View>
 
@@ -83,7 +84,7 @@ export default function CanchasScreen() {
           <TextInput
             value={q}
             onChangeText={setQ}
-            placeholder={tab === "complejos" ? "Buscar complejos por nombre, dirección..." : "Buscar canchas por deporte, sector..."}
+            placeholder="Buscar canchas por deporte, complejo, sector..."
             style={{ flex: 1, fontSize: 16 }}
           />
           {!!q && (
@@ -129,83 +130,55 @@ export default function CanchasScreen() {
         )}
       </View>
 
-      {/* Loading / error */}
+      {/* Loading / Error */}
       {isLoading && (
         <View style={{ paddingVertical: 24, alignItems: "center" }}>
           <ActivityIndicator />
         </View>
       )}
-      {isError && (
+      {isError && !isLoading && (
         <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-          <Text style={{ color: "#b91c1c" }}>No se pudieron cargar los datos. Reintenta.</Text>
+          <Text style={{ color: "#b91c1c" }}>No se pudieron cargar las canchas. Reintenta.</Text>
           <TouchableOpacity onPress={() => refetch()} style={[styles.btnOutline, { marginTop: 8 }]}>
             <Text style={{ color: "#0ea5a4", fontWeight: "700" }}>Reintentar</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Listado */}
+      {/* Listado Cards bonitas (datos reales de la API) */}
       {!isLoading && !isError && (
-        tab === "complejos" ? (
-          <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 6 }}>
-            {complejos.map(c => (
-              <View key={c.id} style={styles.card}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <View style={styles.roundIcon}><Ionicons name="home-outline" size={16} color="#0ea5a4" /></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.cardTitle}>{c.nombre}</Text>
-                    <Text style={styles.cardSub}>
-                      {(c.direccion ?? "Dirección desconocida")} · {(c.comuna ?? "—")}
-                    </Text>
-                    {!!c.deportes?.length && (
-                      <Text style={styles.cardSub}>
-                        Deportes: {c.deportes.join(", ")}{typeof c.canchas === "number" ? ` · Canchas: ${c.canchas}` : ""}
-                      </Text>
-                    )}
-                    {typeof c.rating === "number" && <Text style={styles.cardSub}>⭐ {c.rating.toFixed(1)}</Text>}
-                  </View>
+        <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 6 }}>
+          {canchas.map((c) => (
+            <View key={c.id_cancha} style={styles.card}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={styles.roundIcon}><Ionicons name="football-outline" size={16} color="#0ea5a4" /></View>
+                <View style={{ flex: 1 }}>
+                  {/* 🔹 Aquí cambiamos el título para mostrar el nombre de la cancha */}
+                  <Text style={styles.cardTitle}>{c.nombre ?? c.tipo ?? c.deporte ?? "—"}</Text>
+                  <Text style={styles.cardSub}>{c.nombre_complejo ?? "Complejo"} · {c.sector ?? "—"}</Text>
+                  <Text style={styles.cardSub}>
+                    {c.superficie ? `${c.superficie} · ` : ""}{typeof c.precio_desde === "number" ? `Desde ${formatCLP(c.precio_desde)}/h` : ""}
+                  </Text>
                 </View>
-                <View style={styles.cardActions}>
-                  <OutlineBtn text="Ver complejo" onPress={() => router.push(`/(tabs)/complejos/${c.id}`)} />
-                  <PrimaryBtn text="Reservar" onPress={() => router.push(`/(tabs)/complejos/${c.id}`)} />
-                </View>
+                {typeof c.disponible_hoy === "boolean" && (
+                  <Badge text={c.disponible_hoy ? "Hoy disponible" : "Hoy no hay"} tone={c.disponible_hoy ? "success" : "muted"} />
+                )}
               </View>
-            ))}
-            {complejos.length === 0 && <EmptyState text="No encontramos complejos que coincidan con tu búsqueda." />}
-          </View>
-        ) : (
-          <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 6 }}>
-            {canchas.map(c => (
-              <View key={c.id} style={styles.card}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <View style={styles.roundIcon}><Ionicons name="football-outline" size={16} color="#0ea5a4" /></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.cardTitle}>{(c.tipo ?? c.deporte) || "—"} · {c.deporte ?? "—"}</Text>
-                    <Text style={styles.cardSub}>{c.complejoNombre ?? "Complejo"} · {c.sector ?? "—"}</Text>
-                    <Text style={styles.cardSub}>
-                      {c.superficie ? `${c.superficie} · ` : ""}{typeof c.precioDesde === "number" ? `Desde ${formatCLP(c.precioDesde)}/h` : ""}
-                    </Text>
-                  </View>
-                  {typeof c.disponibleHoy === "boolean" && (
-                    <Badge text={c.disponibleHoy ? "Hoy disponible" : "Hoy no hay"} tone={c.disponibleHoy ? "success" : "muted"} />
-                  )}
-                </View>
-                <View style={styles.cardActions}>
-                  <OutlineBtn text="Ver complejo" onPress={() => router.push(`/(tabs)/complejos/${c.complejoId}`)} />
-                  <PrimaryBtn text="Reservar" onPress={() => router.push(`/(tabs)/reservar/${c.id}`)} />
-                </View>
+              <View style={styles.cardActions}>
+                <OutlineBtn text="Ver complejo" onPress={() => router.push(`/(tabs)/complejos/${c.id_complejo}`)} />
+                <PrimaryBtn text="Reservar" onPress={() => router.push(`/(tabs)/reservar/${c.id_cancha}`)} />
               </View>
-            ))}
-            {canchas.length === 0 && <EmptyState text="No encontramos canchas con esos filtros." />}
-          </View>
-        )
+            </View>
+          ))}
+          {canchas.length === 0 && <EmptyState text="No encontramos canchas con esos filtros." />}
+        </View>
       )}
     </ScrollView>
   );
 }
 
-// ----- helpers UI -----
-function Segment({ label, active, onPress }:{ label:string; active:boolean; onPress:()=>void }) {
+/* ---------- UI helpers ---------- */
+function Segment({ label, active, onPress }:{ label:string; active?:boolean; onPress:()=>void }) {
   return (
     <TouchableOpacity onPress={onPress} style={[styles.segment, active && styles.segmentActive]}>
       <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
@@ -262,10 +235,10 @@ function EmptyState({ text }:{ text:string }) {
 function formatCLP(n?: number | null) {
   if (typeof n !== "number") return "";
   try { return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(n); }
-  catch { return `$${n.toLocaleString("es-CL")}`; }
+  catch { return `$${(n ?? 0).toLocaleString("es-CL")}`; }
 }
 
-// ----- estilos -----
+/* ---------- estilos ---------- */
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10,

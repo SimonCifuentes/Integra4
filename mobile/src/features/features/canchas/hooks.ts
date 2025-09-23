@@ -1,8 +1,6 @@
 ﻿import { useQuery } from "@tanstack/react-query";
 import { CanchasAPI } from "./api";
 
-export const useCanchas = (params?: { q?: string; deporte?: string; sector?: string; fecha?: string }) =>
-  useQuery({
-    queryKey: ["canchas", params],
-    queryFn: () => CanchasAPI.list(params),
-  });
+export function useCanchas(filters?: Parameters<typeof CanchasAPI.list>[0]) {
+  return useQuery({ queryKey:["canchas",filters], queryFn:()=>CanchasAPI.list(filters) });
+}
