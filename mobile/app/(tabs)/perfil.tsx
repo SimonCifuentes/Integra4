@@ -1,4 +1,4 @@
-// app/perfil.tsx
+﻿// app/perfil.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,

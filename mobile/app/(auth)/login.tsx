@@ -1,40 +1,62 @@
 // app/(auth)/login.tsx
-import { useState } from 'react';
-import { View, TextInput, Button, Text, ActivityIndicator } from 'react-native';
-import { useLogin } from '../../src/features/features/auth/hooks';
-// filepath: c:\Users\nachi\OneDrive\Documentos\GitHub\Integra4\mobile\app\(auth)\login.tsx
-import { useAuth } from '../../src/stores/auth';
-import { router } from 'expo-router';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  View,
+  TextInput,
+  Text,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Switch,
+  TouchableOpacity,
+  StyleSheet,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 
-// 🔒 Desactiva el bypass por completo
-const DEV_BYPASS_AUTH = false;
+import { useLogin } from "../../src/features/features/auth/hooks";
+import { useAuth } from "../../src/stores/auth";
+
+const DEV_BYPASS_AUTH = false; // no usado, pero lo dejamos por si lo reactivas
 
 export default function LoginScreen() {
-  // Sugerencia: deja prellenado con un usuario seed real de tu DB si quieres
+  // Puedes dejar credenciales seed para dev
   const [email, setEmail] = useState("user@playtemuco.cl");
   const [password, setPassword] = useState("Cambiar.123");
 
   const [showPass, setShowPass] = useState(false);
-  const [remember, setRemember] = useState(true); // si tu setSession maneja "remember", puedes usarlo
+  const [remember, setRemember] = useState(true); // decorativo
   const [error, setError] = useState<string | null>(null);
 
-  const login = useLogin(); // TanStack v5: mutateAsync → POST /auth/login
-  const setSession = useAuth((s) => s.setSession);
+  const login = useLogin();                // tanstack mutation
+  const setSession = useAuth((s) => s.setSession); // (token, user)
 
-  // Animación suave del hero
+  // Animación del “hero”
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 2200, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 2200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 2200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
       ])
     ).start();
   }, [pulse]);
   const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.03] });
 
   const emailOk = useMemo(() => /^\S+@\S+\.\S+$/.test(email), [email]);
-  const passOk  = useMemo(() => (password?.length ?? 0) >= 6, [password]);
+  const passOk = useMemo(() => (password?.length ?? 0) >= 6, [password]);
   const canSubmit = emailOk && passOk && !login.isPending;
 
   const doSubmit = async () => {
@@ -43,19 +65,14 @@ export default function LoginScreen() {
     setError(null);
 
     try {
-      // 👉 Llama a tu API real a través del hook
       const { access_token, user } = await login.mutateAsync({ email, password });
 
-      // 👉 Guarda la sesión (el store debe encargarse de persistir el token en SecureStore)
-      await setSession(access_token, user, { remember }); // si tu setSession recibe opciones
+      // tu setSession recibe (token, user)
+      await setSession(access_token, user);
 
-      // Vibración suave de éxito (opcional)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-      // Redirige al home (ajusta si usas tabs)
-      router.replace("/");
+      router.replace("/"); // o "/(tabs)" según tu navegación
     } catch (e: any) {
-      // Manejo de errores “amigable”
       const msg =
         e?.response?.data?.detail ||
         e?.response?.data?.message ||
@@ -67,9 +84,17 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       {/* HERO */}
-      <LinearGradient colors={["#0ea5a4", "#16a34a"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+      <LinearGradient
+        colors={["#0ea5a4", "#16a34a"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.hero}
+      >
         <View style={styles.heroContent}>
           <Animated.View style={[styles.heroBadge, { transform: [{ scale }] }]}>
             <Ionicons name="football-outline" size={26} color="#065f46" />
@@ -85,7 +110,7 @@ export default function LoginScreen() {
           <Text style={styles.cardTitle}>Inicia sesión</Text>
 
           {/* Email */}
-          <View style={[styles.inputWrap, !emailOk && email.length > 0 ? styles.inputError : null]}>
+          <View style={[styles.inputWrap, !emailOk && email.length > 0 && styles.inputError]}>
             <Ionicons name="mail-outline" size={18} color="#64748b" />
             <TextInput
               value={email}
@@ -106,7 +131,7 @@ export default function LoginScreen() {
           </View>
 
           {/* Password */}
-          <View style={[styles.inputWrap, !passOk && password.length > 0 ? styles.inputError : null]}>
+          <View style={[styles.inputWrap, !passOk && password.length > 0 && styles.inputError]}>
             <Ionicons name="lock-closed-outline" size={18} color="#64748b" />
             <TextInput
               value={password}
@@ -118,7 +143,11 @@ export default function LoginScreen() {
               onSubmitEditing={doSubmit}
             />
             <TouchableOpacity onPress={() => setShowPass((s) => !s)} hitSlop={10}>
-              <Ionicons name={showPass ? "eye-off-outline" : "eye-outline"} size={18} color="#64748b" />
+              <Ionicons
+                name={showPass ? "eye-off-outline" : "eye-outline"}
+                size={18}
+                color="#64748b"
+              />
             </TouchableOpacity>
           </View>
 
@@ -164,7 +193,7 @@ export default function LoginScreen() {
             <View style={styles.divider} />
           </View>
 
-          {/* Social (decorativo / plug futuro) */}
+          {/* Social (placeholder) */}
           <View style={styles.rowGap}>
             <TouchableOpacity style={styles.altBtn} onPress={() => {}}>
               <Ionicons name="logo-google" size={18} color="#111827" />
@@ -183,13 +212,14 @@ export default function LoginScreen() {
               <Text style={[styles.link, { marginLeft: 6 }]}>Crear cuenta</Text>
             </TouchableOpacity>
           </View>
-
-          {/* ❌ Eliminado el botón de bypass DEV */}
         </View>
       </View>
     </KeyboardAvoidingView>
   );
 }
+
+/* ---------- estilos ---------- */
+import { Animated, Easing } from "react-native";
 
 const styles = StyleSheet.create({
   hero: {
