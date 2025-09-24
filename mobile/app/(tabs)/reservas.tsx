@@ -1,5 +1,5 @@
 ﻿import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Alert, RefreshControl } from "react-native";
-import { useMisReservas, useCancelarReserva } from "@/src/features/reservas/hooks";
+import { useMisReservas, useCancelarReserva } from "@/src/features/features/reservas/hooks";
 
 export default function MisReservas() {
   const { data, isLoading, error, refetch, isRefetching } = useMisReservas();
