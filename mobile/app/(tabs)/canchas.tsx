@@ -1,243 +1,63 @@
-﻿// app/(tabs)/canchas.tsx
-import { useMemo, useState } from "react";
-import {
-  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, RefreshControl,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useComplejos } from "@/src/features/features/complejos/hooks";
-import { useCanchas } from "@/src/features/features/canchas/hooks";
-import type { Complejo } from "@/src/features/features/complejos/api";
-import type { Cancha } from "@/src/features/features/canchas/api";
+import React, { useState } from "react";
+import { View, Text, FlatList, ActivityIndicator, Button } from "react-native";
+import { useCanchas } from '../../src/features/features/canchas/hooks';
+import ReservaModal from "../../src/components/ReservaModal";
 
-export default function CanchasScreen() {
-  const [tab, setTab] = useState<"complejos" | "canchas">("complejos");
-  const [q, setQ] = useState("");
-  const [fDeporte, setFDeporte] = useState<string | null>(null);
-  const [fSector, setFSector] = useState<string | null>(null);
-  const [fFecha, setFFecha] = useState<string | null>(null);
+export default function Canchas(){
+  const { data, isLoading } = useCanchas({ page:1, page_size:20 });
+  const [selectedCancha, setSelectedCancha] = useState<any>(null);
+  const [modalVisible, setModalVisible] = useState(false);
 
-  // Opciones básicas; si tu API devuelve catálogos, puedes cargarlos allí
-  const deportes = ["Fútbol", "Pádel", "Tenis", "Básquetbol"];
-  const sectores = ["Centro", "Ñielol", "Labranza"];
+  const openReserva = (cancha: any) => {
+    setSelectedCancha(cancha);
+    setModalVisible(true);
+  };
 
-  // Llamadas a API (paso filtros; si tu backend no soporta alguno, igual filtramos client-side)
-  const complejosQ = useComplejos({ q: q || undefined, deporte: fDeporte || undefined, sector: fSector || undefined });
-  const canchasQ   = useCanchas  ({ q: q || undefined, deporte: fDeporte || undefined, sector: fSector || undefined, fecha: fFecha || undefined });
+  // Este será el onSubmit que le pasamos al modal
+  const handleReservaSubmit = async (reservaData: { fecha: string; horaInicio: string; horaFin: string; canchaId?: string | number }) => {
+    // Combinar con selectedCancha si canchaId no fue ingresado manualmente
+    const idCancha = reservaData.canchaId ?? selectedCancha?.id_cancha ?? selectedCancha?.id;
 
-  const isLoading = (tab === "complejos" ? complejosQ.isLoading : canchasQ.isLoading);
-  const isError   = (tab === "complejos" ? complejosQ.isError   : canchasQ.isError);
-  const refetch   = (tab === "complejos" ? complejosQ.refetch   : canchasQ.refetch);
-  const refreshing = (tab === "complejos" ? complejosQ.isRefetching : canchasQ.isRefetching);
+    const payload = {
+      id_cancha: Number(idCancha),
+      inicio: `${reservaData.fecha}T${reservaData.horaInicio}:00`, // ajusta zona horaria si hace falta
+      fin: `${reservaData.fecha}T${reservaData.horaFin}:00`,
+    };
 
-  // Fallback: filtrado en cliente (si la API no filtra todo)
-  const complejos: Complejo[] = useMemo(() => {
-    const list = complejosQ.data ?? [];
-    return list.filter(c =>
-      (q ? ((c.nombre ?? "") + " " + (c.direccion ?? "") + " " + (c.comuna ?? "")).toLowerCase().includes(q.toLowerCase()) : true) &&
-      (fDeporte ? (c.deportes ?? []).includes(fDeporte) : true) &&
-      (fSector ? (c.comuna ?? "").toLowerCase().includes(fSector.toLowerCase()) : true)
-    );
-  }, [complejosQ.data, q, fDeporte, fSector]);
+    console.log("POST /reservas payload:", payload);
 
-  const canchas: Cancha[] = useMemo(() => {
-    const list = canchasQ.data ?? [];
-    return list.filter(c =>
-      (q ? ((c.complejoNombre ?? "") + " " + (c.tipo ?? "") + " " + (c.deporte ?? "") + " " + (c.sector ?? "")).toLowerCase().includes(q.toLowerCase()) : true) &&
-      (fDeporte ? c.deporte === fDeporte : true) &&
-      (fSector ? c.sector === fSector : true)
-      // fFecha: idealmente lo filtra el backend por disponibilidad
-    ).sort((a, b) => Number(b.disponibleHoy ?? 0) - Number(a.disponibleHoy ?? 0));
-  }, [canchasQ.data, q, fDeporte, fSector, fFecha]);
+    // Aquí puedes hacer el POST al backend, por ejemplo:
+    // await fetch(`${API_URL}/reservas`, {
+    //   method: "POST",
+    //   headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    //   body: JSON.stringify(payload)
+    // });
+
+    setModalVisible(false);
+  };
+
+  if (isLoading) return <ActivityIndicator style={{marginTop:32}} />;
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: "#fff" }}
-      contentContainerStyle={{ paddingBottom: 24 }}
-      refreshControl={
-        <RefreshControl refreshing={!!refreshing} onRefresh={() => refetch()} />
-      }
-    >
-      {/* Header integrado */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Buscar</Text>
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-          <Segment label="Complejos" active={tab === "complejos"} onPress={() => setTab("complejos")} />
-          <Segment label="Canchas"   active={tab === "canchas"}   onPress={() => setTab("canchas")} />
-        </View>
-      </View>
-
-      {/* Buscador */}
-      <View style={{ paddingHorizontal: 16 }}>
-        <View style={styles.searchWrap}>
-          <Ionicons name="search-outline" size={18} color="#64748b" />
-          <TextInput
-            value={q}
-            onChangeText={setQ}
-            placeholder={tab === "complejos" ? "Buscar complejos por nombre, dirección..." : "Buscar canchas por deporte, sector..."}
-            style={{ flex: 1, fontSize: 16 }}
-          />
-          {!!q && (
-            <TouchableOpacity onPress={() => setQ("")}>
-              <Ionicons name="close-circle" size={18} color="#94a3b8" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      {/* Filtros rápidos */}
-      <View style={styles.filtersRow}>
-        <DropdownChip
-          icon="football-outline"
-          label={fDeporte ?? "Deporte"}
-          onPress={() => {
-            const idx = deportes.indexOf(fDeporte ?? "");
-            const next = idx < 0 ? deportes[0] : (idx + 1 >= deportes.length ? null : deportes[idx + 1]);
-            setFDeporte(next);
-          }}
-          active={!!fDeporte}
-        />
-        <DropdownChip
-          icon="map-outline"
-          label={fSector ?? "Sector"}
-          onPress={() => {
-            const idx = sectores.indexOf(fSector ?? "");
-            const next = idx < 0 ? sectores[0] : (idx + 1 >= sectores.length ? null : sectores[idx + 1]);
-            setFSector(next);
-          }}
-          active={!!fSector}
-        />
-        <DropdownChip
-          icon="calendar-outline"
-          label={fFecha ?? "Fecha"}
-          onPress={() => setFFecha(fFecha ? null : "Hoy")}
-          active={!!fFecha}
-        />
-        {(fDeporte || fSector || fFecha) && (
-          <TouchableOpacity onPress={() => { setFDeporte(null); setFSector(null); setFFecha(null); }}>
-            <Text style={{ color: "#ef4444", fontWeight: "700" }}>Limpiar</Text>
-          </TouchableOpacity>
+    <View style={{flex:1}}>
+      <FlatList
+        data={data?.items ?? []}
+        keyExtractor={(it)=>String(it.id_cancha)}
+        renderItem={({item})=>(
+          <View style={{padding:16,borderBottomWidth:1}}>
+            <Text style={{fontWeight:"600"}}>{item.nombre}</Text>
+            <Text>{item.deporte ?? "Deporte"}</Text>
+            <Button title="Reservar" onPress={() => openReserva(item)} />
+          </View>
         )}
-      </View>
+      />
 
-      {/* Loading / error */}
-      {isLoading && (
-        <View style={{ paddingVertical: 24, alignItems: "center" }}>
-          <ActivityIndicator />
-        </View>
-      )}
-      {isError && (
-        <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-          <Text style={{ color: "#b91c1c" }}>No se pudieron cargar los datos. Reintenta.</Text>
-          <TouchableOpacity onPress={() => refetch()} style={[styles.btnOutline, { marginTop: 8 }]}>
-            <Text style={{ color: "#0ea5a4", fontWeight: "700" }}>Reintentar</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Listado */}
-      {!isLoading && !isError && (
-        tab === "complejos" ? (
-          <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 6 }}>
-            {complejos.map(c => (
-              <View key={c.id} style={styles.card}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <View style={styles.roundIcon}><Ionicons name="home-outline" size={16} color="#0ea5a4" /></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.cardTitle}>{c.nombre}</Text>
-                    <Text style={styles.cardSub}>
-                      {(c.direccion ?? "Dirección desconocida")} · {(c.comuna ?? "—")}
-                    </Text>
-                    {!!c.deportes?.length && (
-                      <Text style={styles.cardSub}>
-                        Deportes: {c.deportes.join(", ")}{typeof c.canchas === "number" ? ` · Canchas: ${c.canchas}` : ""}
-                      </Text>
-                    )}
-                    {typeof c.rating === "number" && <Text style={styles.cardSub}>⭐ {c.rating.toFixed(1)}</Text>}
-                  </View>
-                </View>
-                <View style={styles.cardActions}>
-                  <OutlineBtn text="Ver complejo" onPress={() => router.push(`/(tabs)/complejos/${c.id}`)} />
-                  <PrimaryBtn text="Reservar" onPress={() => router.push(`/(tabs)/complejos/${c.id}`)} />
-                </View>
-              </View>
-            ))}
-            {complejos.length === 0 && <EmptyState text="No encontramos complejos que coincidan con tu búsqueda." />}
-          </View>
-        ) : (
-          <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 6 }}>
-            {canchas.map(c => (
-              <View key={c.id} style={styles.card}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <View style={styles.roundIcon}><Ionicons name="football-outline" size={16} color="#0ea5a4" /></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.cardTitle}>{(c.tipo ?? c.deporte) || "—"} · {c.deporte ?? "—"}</Text>
-                    <Text style={styles.cardSub}>{c.complejoNombre ?? "Complejo"} · {c.sector ?? "—"}</Text>
-                    <Text style={styles.cardSub}>
-                      {c.superficie ? `${c.superficie} · ` : ""}{typeof c.precioDesde === "number" ? `Desde ${formatCLP(c.precioDesde)}/h` : ""}
-                    </Text>
-                  </View>
-                  {typeof c.disponibleHoy === "boolean" && (
-                    <Badge text={c.disponibleHoy ? "Hoy disponible" : "Hoy no hay"} tone={c.disponibleHoy ? "success" : "muted"} />
-                  )}
-                </View>
-                <View style={styles.cardActions}>
-                  <OutlineBtn text="Ver complejo" onPress={() => router.push(`/(tabs)/complejos/${c.complejoId}`)} />
-                  <PrimaryBtn text="Reservar" onPress={() => router.push(`/(tabs)/reservar/${c.id}`)} />
-                </View>
-              </View>
-            ))}
-            {canchas.length === 0 && <EmptyState text="No encontramos canchas con esos filtros." />}
-          </View>
-        )
-      )}
-    </ScrollView>
-  );
-}
-
-// ----- helpers UI -----
-function Segment({ label, active, onPress }:{ label:string; active:boolean; onPress:()=>void }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={[styles.segment, active && styles.segmentActive]}>
-      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function DropdownChip({ icon, label, onPress, active }:{
-  icon: keyof typeof Ionicons.glyphMap; label:string; onPress:()=>void; active?:boolean;
-}) {
-  return (
-    <TouchableOpacity onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
-      <Ionicons name={icon} size={14} color={active ? "#0ea5a4" : "#64748b"} />
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
-      <Ionicons name="chevron-down" size={14} color={active ? "#0ea5a4" : "#94a3b8"} />
-    </TouchableOpacity>
-  );
-}
-
-function PrimaryBtn({ text, onPress }:{ text:string; onPress:()=>void }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.btnPrimary}>
-      <Text style={{ color: "white", fontWeight: "700" }}>{text}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function OutlineBtn({ text, onPress }:{ text:string; onPress:()=>void }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.btnOutline}>
-      <Text style={{ color: "#0ea5a4", fontWeight: "700" }}>{text}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function Badge({ text, tone }:{ text:string; tone?: "success" | "muted" }) {
-  const bg = tone === "success" ? "#dcfce7" : "#e5e7eb";
-  const fg = tone === "success" ? "#166534" : "#374151";
-  return (
-    <View style={{ backgroundColor: bg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 }}>
-      <Text style={{ color: fg, fontWeight: "700" }}>{text}</Text>
+      <ReservaModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        cancha={selectedCancha}
+        onSubmit={handleReservaSubmit}
+      />
     </View>
   );
 }
