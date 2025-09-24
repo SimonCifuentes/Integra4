@@ -1,12 +1,4 @@
-<<<<<<< HEAD
-﻿import { View, Text, FlatList, ActivityIndicator } from "react-native";
-import { useCanchas } from '../../src/features/features/canchas/hooks';
-// filepath: c:\Users\nachi\OneDrive\Documentos\GitHub\Integra4\mobile\app\(tabs)\canchas.tsx
-export default function Canchas(){
-  const { data, isLoading } = useCanchas({ page:1, page_size:20 });
-  if (isLoading) return <ActivityIndicator style={{marginTop:32}} />;
-=======
-﻿// app/(tabs)/canchas.tsx
+// app/(tabs)/canchas.tsx
 import React, { useMemo, useState } from "react";
 import {
   View,
@@ -82,15 +74,6 @@ export default function CanchasScreen() {
       .sort((a, b) => Number(b.disponible_hoy ?? 0) - Number(a.disponible_hoy ?? 0));
   }, [items, q, fDeporte, fSector]);
 
-<<<<<<< HEAD
->>>>>>> 241975d (fix perfil)
-  return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: "#fff" }}
-      contentContainerStyle={{ paddingBottom: 24 }}
-      refreshControl={<RefreshControl refreshing={!!isRefetching} onRefresh={() => refetch()} />}
-    >
-=======
   // --- Reserva: abrir modal
   const openReserva = (cancha: CanchaBE) => {
     setSelectedCancha(cancha);
@@ -123,7 +106,6 @@ export default function CanchasScreen() {
   // Header visual, buscador y filtros como ListHeaderComponent de FlatList
   const listHeader = (
     <>
->>>>>>> a2153b1 (Unión rama dev jose)
       {/* Header integrado */}
       <View style={styles.header}>
         <Text style={styles.title}>Buscar</Text>
@@ -245,8 +227,7 @@ export default function CanchasScreen() {
         ListHeaderComponent={listHeader}
         ListEmptyComponent={<EmptyState text="No encontramos canchas con esos filtros." />}
         refreshControl={<RefreshControl refreshing={!!isRefetching} onRefresh={() => refetch()} />}
-        contentContainerStyle={{ paddingBottom: 24, paddingHorizontal: 16, gap: 12 }}
-      />
+        contentContainerStyle={{ paddingBottom: 24, paddingHorizontal: 16, gap: 12 }} renderItem={undefined}      />
     );
   }
 

@@ -1,10 +1,5 @@
-<<<<<<< HEAD
 // app/perfil.tsx
-import { useEffect, useMemo, useState } from "react";
-=======
-﻿// app/perfil.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
->>>>>>> 241975d (fix perfil)
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Alert, ActivityIndicator, Modal, Animated, Easing
