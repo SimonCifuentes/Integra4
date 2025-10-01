@@ -1,6 +1,6 @@
 // app/(auth)/login.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, TextInput, Button, Text, ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Switch, TouchableOpacity } from 'react-native';
+import { View, TextInput, Button, Text, ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Switch, TouchableOpacity, StyleSheet } from 'react-native';
 import { useLogin } from '../../src/features/features/auth/hooks';
 // filepath: c:\Users\nachi\OneDrive\Documentos\GitHub\Integra4\mobile\app\(auth)\login.tsx
 import { useAuth } from '../../src/stores/auth';
