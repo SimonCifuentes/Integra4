@@ -1,10 +1,11 @@
 // app/(auth)/login.tsx
-import { useState } from 'react';
-import { View, TextInput, Button, Text, ActivityIndicator } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, TextInput, Button, Text, ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Switch, TouchableOpacity } from 'react-native';
 import { useLogin } from '../../src/features/features/auth/hooks';
 // filepath: c:\Users\nachi\OneDrive\Documentos\GitHub\Integra4\mobile\app\(auth)\login.tsx
 import { useAuth } from '../../src/stores/auth';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 // 🔒 Desactiva el bypass por completo
 const DEV_BYPASS_AUTH = false;

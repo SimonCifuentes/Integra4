@@ -17,7 +17,9 @@ from app.modules.denuncias.router import router as denuncias
 from app.modules.admin.router import router as admin
 from app.modules.superadmin.router import router as superadmin
 from app.modules.uploads.router import router as uploads
-
+from app.modules.nearby.router import router as nearby
+from app.modules.complejos.router_empty import router as complejos_empty
+from app.modules.canchas.router_empty import router as canchas_empty
 api_router = APIRouter()
 
 # Si cada router YA tiene prefix, no pongas prefix aquí:
@@ -35,6 +37,9 @@ api_router.include_router(grupos)
 api_router.include_router(favoritos)
 api_router.include_router(denuncias)
 api_router.include_router(uploads)
+api_router.include_router(nearby)
+api_router.include_router(complejos_empty)  # GET /api/v1/complejos -> []
+api_router.include_router(canchas_empty)    # GET /api/v1/canchas   -> []
 
 # Para estos dos, si dentro NO tienen prefix, mantenlos con prefix aquí:
 api_router.include_router(admin, prefix="/admin")

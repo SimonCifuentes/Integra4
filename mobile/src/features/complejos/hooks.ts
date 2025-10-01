@@ -1,3 +1,8 @@
-﻿/* eslint-disable @typescript-eslint/no-explicit-any */
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-export const hooks = {}; // TODO: implementar hooks (useQuery/useMutation)
+﻿﻿import { useQuery } from "@tanstack/react-query";
+import { ComplejosAPI } from "./api";
+
+export const useComplejos = (params?: { q?: string; deporte?: string; sector?: string }) =>
+  useQuery({
+    queryKey: ["complejos", params],
+    queryFn: () => ComplejosAPI.list(params),
+  });

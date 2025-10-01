@@ -20,6 +20,7 @@ def list_canchas(db: Session, params: CanchasQuery) -> CanchasListOut:
         id_complejo=params.id_complejo,
         deporte=params.deporte,
         cubierta=params.cubierta,
+        iluminacion=params.iluminacion,  # <-- NUEVO
         max_precio=params.max_precio,
         lat=params.lat, lon=params.lon, max_km=params.max_km,
         sort_by=params.sort_by or "nombre",

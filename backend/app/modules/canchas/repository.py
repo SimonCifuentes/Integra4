@@ -24,6 +24,7 @@ def search_canchas(
     id_complejo: Optional[int],
     deporte: Optional[str],
     cubierta: Optional[bool],
+    iluminacion: Optional[bool],  # <-- NUEVO
     max_precio: Optional[float],
     lat: Optional[float],
     lon: Optional[float],
@@ -38,6 +39,7 @@ def search_canchas(
         "id_complejo": id_complejo,
         "deporte": deporte.lower() if deporte else None,
         "cubierta": cubierta,
+        "iluminacion": iluminacion,  # <-- NUEVO
         "max_precio": max_precio,
         "lat": lat, "lon": lon, "max_km": max_km,
         "offset": offset, "limit": limit,
@@ -73,6 +75,9 @@ def search_canchas(
         wheres.append("lower(d.nombre) = :deporte")
     if cubierta is not None:
         wheres.append("ch.cubierta = :cubierta")
+    if iluminacion is not None:
+        # Requiere columna booleana ch.iluminacion
+        wheres.append("ch.iluminacion = :iluminacion")
 
     if wheres:
         base += " AND " + " AND ".join(wheres)
