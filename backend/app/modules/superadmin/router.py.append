@@ -1,0 +1,10 @@
+
+from sqlalchemy.orm import Session
+from fastapi import Depends
+from app.db.session import get_db
+from app.db.seed.seed_canchas import run as run_seed_canchas
+
+@router.post("/seed/canchas", dependencies=[Depends(require_roles("superadmin"))])
+def run_seed_canchas_endpoint(db: Session = Depends(get_db)):
+    """Ejecuta solo el seed de **canchas** (requiere rol superadmin)."""
+    return run_seed_canchas(db)
