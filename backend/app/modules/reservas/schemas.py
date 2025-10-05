@@ -1,5 +1,6 @@
 from __future__ import annotations
 from datetime import date, time
+from typing import Optional
 from pydantic import BaseModel, Field
 
 class ReservaCreateIn(BaseModel):
@@ -17,3 +18,11 @@ class ReservaOut(BaseModel):
     hora_fin: str     # "HH:MM"
     estado: str       # "pending" | "confirmed" | "cancelled"
     monto_total: float | None = None
+
+# ===== NUEVO: body opcional para cancelar (motivo libre, no persistido aún) =====
+class CancelReservaIn(BaseModel):
+    motivo: Optional[str] = Field(
+        default=None,
+        max_length=280,
+        description="Motivo de la cancelación (opcional, máx. 280 caracteres)"
+    )
