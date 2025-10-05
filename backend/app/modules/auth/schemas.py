@@ -63,19 +63,23 @@ class LogoutIn(BaseModel):
     refresh_token: Optional[str] = Field(None, min_length=20)
 
 class SimpleMsg(BaseModel):
-    detail: str
+    message: str
 
-class VerifyEmailIn(BaseModel):
-    token: str
-
+# --- Verificación de correo ---
 class ResendVerificationIn(BaseModel):
     email: EmailStr
 
+class VerifyEmailIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=12)
+
+# --- Reset de contraseña ---
 class ForgotPasswordIn(BaseModel):
     email: EmailStr
 
 class ResetPasswordIn(BaseModel):
-    token: str
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=12)
     new_password: str = Field(min_length=8, max_length=128)
 
 class ChangePasswordIn(BaseModel):
