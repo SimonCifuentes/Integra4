@@ -320,3 +320,164 @@ def add_foto_cancha(db: Session, id_cancha: int, url_foto: str, orden: Optional[
 def delete_foto_cancha(db: Session, id_cancha: int, id_foto: int) -> None:
     db.execute(text("DELETE FROM fotos_cancha WHERE id_foto = :f AND id_cancha = :c"), {"f": id_foto, "c": id_cancha})
     db.commit()
+
+# ===== Reglas de precio (CRUD + anti-solape) =====
+def _regla_solapa(
+    db: Session,
+    *,
+    id_cancha: int,
+    dia: Optional[str],
+    h_ini: str,
+    h_fin: str,
+    exclude_id: Optional[int] = None
+) -> bool:
+    """
+    Retorna True si existe una regla que se solape con [h_ini, h_fin) para la misma cancha y el mismo 'dia'.
+    Si 'dia' es NULL, se compara contra reglas con 'dia' NULL.
+    """
+    sql = """
+    SELECT 1
+    FROM reglas_precio rp
+    WHERE rp.id_cancha = :idc
+      AND (
+            (:dia IS NULL AND rp.dia IS NULL) OR
+            (:dia IS NOT NULL AND rp.dia = :dia)
+          )
+      AND NOT (rp.hora_fin <= :h_ini OR rp.hora_inicio >= :h_fin)
+    """
+    params = {"idc": id_cancha, "dia": dia, "h_ini": h_ini, "h_fin": h_fin}
+    if exclude_id is not None:
+        sql += " AND rp.id_regla <> :rid"
+        params["rid"] = exclude_id
+    return db.execute(text(sql), params).first() is not None
+
+
+def list_reglas_precio(db: Session, id_cancha: int) -> List[Dict[str, Any]]:
+    """
+    Lista reglas de precio de una cancha, ordenadas por día, hora_inicio, y vigencia.
+    """
+    rows = db.execute(text("""
+        SELECT
+          id_regla,
+          id_cancha,
+          dia,
+          to_char(hora_inicio,'HH24:MI') AS hora_inicio,
+          to_char(hora_fin,'HH24:MI')   AS hora_fin,
+          precio_por_hora,
+          vigente_desde,
+          vigente_hasta
+        FROM reglas_precio
+        WHERE id_cancha = :id
+        ORDER BY dia NULLS LAST, hora_inicio ASC, vigente_desde NULLS LAST
+    """), {"id": id_cancha}).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def insert_regla_precio(db: Session, data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Inserta una regla de precio validando que no se solape con otra regla existente
+    para el mismo 'dia' y cancha.
+    - data espera: id_cancha, dia (o None), hora_inicio (time), hora_fin (time),
+                   precio_por_hora (num), vigente_desde (date|None), vigente_hasta (date|None)
+    """
+    h_ini = data["hora_inicio"].strftime("%H:%M")
+    h_fin = data["hora_fin"].strftime("%H:%M")
+
+    if _regla_solapa(
+        db,
+        id_cancha=int(data["id_cancha"]),
+        dia=data.get("dia"),
+        h_ini=h_ini,
+        h_fin=h_fin,
+    ):
+        raise ValueError("Existe solape con otra regla en ese día/franja horaria")
+
+    row = db.execute(text("""
+        INSERT INTO reglas_precio
+          (id_cancha, dia, hora_inicio, hora_fin, precio_por_hora, vigente_desde, vigente_hasta)
+        VALUES
+          (:id_cancha, :dia, :hora_inicio, :hora_fin, :precio_por_hora, :vigente_desde, :vigente_hasta)
+        RETURNING
+          id_regla, id_cancha, dia,
+          to_char(hora_inicio,'HH24:MI') AS hora_inicio,
+          to_char(hora_fin,'HH24:MI')   AS hora_fin,
+          precio_por_hora, vigente_desde, vigente_hasta
+    """), {
+        "id_cancha": int(data["id_cancha"]),
+        "dia": data.get("dia"),
+        "hora_inicio": data["hora_inicio"],
+        "hora_fin": data["hora_fin"],
+        "precio_por_hora": data["precio_por_hora"],
+        "vigente_desde": data.get("vigente_desde"),
+        "vigente_hasta": data.get("vigente_hasta"),
+    }).mappings().one()
+    db.commit()
+    return dict(row)
+
+
+def update_regla_precio(db: Session, id_regla: int, data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Actualiza parcialmente una regla de precio validando solapes.
+    'data' puede incluir un subconjunto de campos.
+    """
+    cur = db.execute(
+        text("SELECT * FROM reglas_precio WHERE id_regla = :id"),
+        {"id": id_regla}
+    ).mappings().one_or_none()
+    if not cur:
+        raise ValueError("Regla no encontrada")
+
+    merged = dict(cur)
+    # merge de cambios (sin pisar None)
+    for k, v in data.items():
+        if v is not None:
+            merged[k] = v
+
+    # preparar strings HH:MM para validar
+    h_ini = merged["hora_inicio"].strftime("%H:%M") if hasattr(merged["hora_inicio"], "strftime") else merged["hora_inicio"]
+    h_fin = merged["hora_fin"].strftime("%H:%M") if hasattr(merged["hora_fin"], "strftime") else merged["hora_fin"]
+
+    if _regla_solapa(
+        db,
+        id_cancha=int(merged["id_cancha"]),
+        dia=merged.get("dia"),
+        h_ini=h_ini,
+        h_fin=h_fin,
+        exclude_id=id_regla,
+    ):
+        raise ValueError("Solape con otra regla")
+
+    upd = db.execute(text("""
+        UPDATE reglas_precio
+        SET dia=:dia,
+            hora_inicio=:hora_inicio,
+            hora_fin=:hora_fin,
+            precio_por_hora=:precio_por_hora,
+            vigente_desde=:vigente_desde,
+            vigente_hasta=:vigente_hasta
+        WHERE id_regla=:id
+        RETURNING
+          id_regla, id_cancha, dia,
+          to_char(hora_inicio,'HH24:MI') AS hora_inicio,
+          to_char(hora_fin,'HH24:MI')   AS hora_fin,
+          precio_por_hora, vigente_desde, vigente_hasta
+    """), {
+        "id": id_regla,
+        "dia": merged.get("dia"),
+        "hora_inicio": merged["hora_inicio"],
+        "hora_fin": merged["hora_fin"],
+        "precio_por_hora": merged["precio_por_hora"],
+        "vigente_desde": merged.get("vigente_desde"),
+        "vigente_hasta": merged.get("vigente_hasta"),
+    }).mappings().one()
+    db.commit()
+    return dict(upd)
+
+
+def delete_regla_precio(db: Session, id_regla: int) -> bool:
+    """
+    Elimina una regla de precio por id.
+    """
+    res = db.execute(text("DELETE FROM reglas_precio WHERE id_regla = :id"), {"id": id_regla})
+    db.commit()
+    return res.rowcount > 0

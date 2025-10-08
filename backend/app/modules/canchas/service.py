@@ -10,6 +10,12 @@ from app.modules.canchas import repository as repo
 from app.modules.auth.model import Usuario
 from app.modules.complejos import repository as complejos_repo
 
+from sqlalchemy import text  # para consultar id_cancha desde una regla
+from app.modules.canchas.schemas import (
+    ReglaPrecioCreateIn, ReglaPrecioUpdateIn, ReglaPrecioOut,  # ← NUEVO
+)
+
+
 def _is_admin(user: Usuario) -> bool:
     return user.rol in ("admin", "superadmin")
 
@@ -99,4 +105,82 @@ def delete_foto(db: Session, id_cancha: int, id_foto: int, current: Usuario) -> 
         raise HTTPException(status_code=403, detail="No autorizado para eliminar fotos de esta cancha")
 
     repo.delete_foto_cancha(db, id_cancha, id_foto)
+    return {"ok": True}
+
+# ===== Reglas de precio =====
+def _regla_cancha_id(db: Session, id_regla: int) -> Optional[int]:
+    """
+    Obtiene el id_cancha dueño de una regla (para validar permisos en update/delete).
+    """
+    return db.execute(text("SELECT id_cancha FROM reglas_precio WHERE id_regla=:id"), {"id": id_regla}).scalar()
+
+def list_reglas_precio(db: Session, id_cancha: int) -> list[ReglaPrecioOut]:
+    """
+    Público: lista reglas de precio para una cancha.
+    """
+    rows = repo.list_reglas_precio(db, id_cancha=id_cancha)
+    return [ReglaPrecioOut(**r) for r in rows]
+
+def create_regla_precio(db: Session, id_cancha: int, current: Usuario, data: ReglaPrecioCreateIn) -> ReglaPrecioOut:
+    """
+    Dueño del complejo o admin: crea una regla de precio validando solapes.
+    """
+    # permiso por dueño de la cancha
+    id_dueno = repo.owner_of_cancha(db, id_cancha)
+    if id_dueno is None:
+        raise HTTPException(status_code=404, detail="Cancha no encontrada")
+    if not (_is_admin(current) or current.id_usuario == id_dueno):
+        raise HTTPException(status_code=403, detail="No autorizado para administrar precios de esta cancha")
+
+    # asegurar consistencia de id_cancha en el payload
+    payload = data.model_dump()
+    payload["id_cancha"] = id_cancha
+
+    try:
+        out = repo.insert_regla_precio(db, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return ReglaPrecioOut(**out)
+
+def update_regla_precio(db: Session, id_regla: int, current: Usuario, data: ReglaPrecioUpdateIn) -> ReglaPrecioOut:
+    """
+    Dueño del complejo o admin: actualiza parcialmente una regla (valida solapes).
+    """
+    # resolver cancha propietaria de la regla
+    id_cancha = _regla_cancha_id(db, id_regla)
+    if id_cancha is None:
+        raise HTTPException(status_code=404, detail="Regla no encontrada")
+
+    id_dueno = repo.owner_of_cancha(db, id_cancha)
+    if id_dueno is None:
+        raise HTTPException(status_code=404, detail="Cancha no encontrada")
+    if not (_is_admin(current) or current.id_usuario == id_dueno):
+        raise HTTPException(status_code=403, detail="No autorizado para administrar precios de esta cancha")
+
+    try:
+        out = repo.update_regla_precio(db, id_regla=id_regla, data=data.model_dump(exclude_none=True))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return ReglaPrecioOut(**out)
+
+def delete_regla_precio(db: Session, id_regla: int, current: Usuario) -> dict:
+    """
+    Dueño del complejo o admin: elimina una regla de precio.
+    """
+    id_cancha = _regla_cancha_id(db, id_regla)
+    if id_cancha is None:
+        raise HTTPException(status_code=404, detail="Regla no encontrada")
+
+    id_dueno = repo.owner_of_cancha(db, id_cancha)
+    if id_dueno is None:
+        raise HTTPException(status_code=404, detail="Cancha no encontrada")
+    if not (_is_admin(current) or current.id_usuario == id_dueno):
+        raise HTTPException(status_code=403, detail="No autorizado para administrar precios de esta cancha")
+
+    ok = repo.delete_regla_precio(db, id_regla)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Regla no encontrada")
+
     return {"ok": True}

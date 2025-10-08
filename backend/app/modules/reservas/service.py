@@ -1,7 +1,14 @@
 from __future__ import annotations
 from sqlalchemy.orm import Session
-from app.modules.reservas.schemas import ReservaCreateIn
 from app.modules.reservas import repository as repo
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from app.modules.reservas.schemas import (
+    ReservaCreateIn,
+    QuoteIn, QuoteOut, SegmentoOut,   # ← NUEVO
+)
+_TZ = ZoneInfo("America/Santiago")
+
 
 class Service:
     @staticmethod
@@ -62,4 +69,30 @@ class Service:
         """
         return repo.cancelar_reserva_por_actor(
             db, actor_id=actor_id, id_reserva=reserva_id, is_admin=is_admin
+        )
+
+    # ====== Cotización (no crea reserva) ======
+    @staticmethod
+    def cotizar(db: Session, *, data: QuoteIn) -> QuoteOut:
+        """
+        Calcula el precio de una franja para una cancha, segmentando por reglas de precio
+        vigentes y aplicando IVA según config. NO crea reserva.
+        """
+        inicio = datetime.combine(data.fecha, data.hora_inicio).replace(tzinfo=_TZ)
+        fin    = datetime.combine(data.fecha, data.hora_fin).replace(tzinfo=_TZ)
+
+        res = repo.compute_total_reserva(
+            db, id_cancha=data.id_cancha, inicio=inicio, fin=fin
+        )
+
+        return QuoteOut(
+            id_cancha=data.id_cancha,
+            fecha=data.fecha,
+            hora_inicio=data.hora_inicio.strftime("%H:%M"),
+            hora_fin=data.hora_fin.strftime("%H:%M"),
+            minutos_totales=int((fin - inicio).total_seconds() // 60),
+            neto=res["neto"],
+            iva=res["iva"],
+            total=res["total"],
+            segmentos=[SegmentoOut(**s) for s in res["segmentos"]],
         )

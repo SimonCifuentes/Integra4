@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
     LOG_LEVEL: str = "info"
+    IVA_PERCENT: float = 19.0           # Chile
+    PRECIOS_INCLUYEN_IVA: bool = False  # False => precio_por_hora es NETO (recomendado)
+
 
     # === CORS ===
     CORS_ORIGINS: str = "http://localhost:19006"

@@ -2,6 +2,9 @@ from __future__ import annotations
 from typing import Optional, Literal, List, Annotated
 from pydantic import BaseModel, Field
 from pydantic import AliasChoices  # <-- para alias 'techada' en Query
+from datetime import time, date
+
+
 
 # Tipos con restricciones (Pydantic v2)
 Lat = Annotated[float, Field(ge=-90, le=90)]
@@ -81,3 +84,47 @@ class CanchaFotoOut(BaseModel):
     id_cancha: int
     url_foto: str
     orden: int
+
+DiaSemana = Literal[
+    "lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"
+]
+
+class ReglaPrecioCreateIn(BaseModel):
+    """
+    Regla de precio por cancha para una franja horaria.
+    Si 'dia' es None, aplica a todos los días.
+    'precio_por_hora' se interpreta como NETO o BRUTO según config (settings.PRECIOS_INCLUYEN_IVA).
+    """
+    id_cancha: int
+    dia: Optional[DiaSemana] = None
+    hora_inicio: time
+    hora_fin: time
+    precio_por_hora: NonNegMoney
+    vigente_desde: Optional[date] = None
+    vigente_hasta: Optional[date] = None
+
+class ReglaPrecioUpdateIn(BaseModel):
+    """
+    Actualización parcial de una regla.
+    Se valida solape en la capa repository/service.
+    """
+    dia: Optional[DiaSemana] = None
+    hora_inicio: Optional[time] = None
+    hora_fin: Optional[time] = None
+    precio_por_hora: Optional[NonNegMoney] = None
+    vigente_desde: Optional[date] = None
+    vigente_hasta: Optional[date] = None
+
+class ReglaPrecioOut(BaseModel):
+    """
+    Respuesta estándar de una regla de precio.
+    Las horas salen formateadas "HH:MM".
+    """
+    id_regla: int
+    id_cancha: int
+    dia: Optional[DiaSemana]
+    hora_inicio: str
+    hora_fin: str
+    precio_por_hora: float
+    vigente_desde: Optional[date]
+    vigente_hasta: Optional[date]

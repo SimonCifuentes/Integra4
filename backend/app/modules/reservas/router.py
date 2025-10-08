@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from app.shared.deps import get_db, require_roles
 from app.modules.auth.model import Usuario
 from app.modules.reservas.schemas import ReservaCreateIn, ReservaOut
-# Si agregaste el esquema opcional de motivo:
-# from app.modules.reservas.schemas import CancelReservaIn
 from app.modules.reservas.service import Service
+from app.modules.reservas.schemas import QuoteIn, QuoteOut  # ← NUEVO
+
 
 router = APIRouter(prefix="/reservas", tags=["reservas"])
 
@@ -79,3 +79,16 @@ def cancelar_reserva_admin(
         # conflict u otro
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No fue posible cancelar la reserva")
     return res
+
+# === Cotización (no crea reserva) ===
+@router.post("/quote", response_model=QuoteOut, status_code=status.HTTP_200_OK)
+def quote_reserva(
+    body: QuoteIn,
+    db: Session = Depends(get_db),
+):
+    """
+    Calcula el precio para la franja indicada segmentando por reglas vigentes y aplicando IVA.
+    No crea la reserva.
+    """
+    return Service.cotizar(db, data=body)
+

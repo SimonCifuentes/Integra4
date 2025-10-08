@@ -21,6 +21,17 @@ from app.modules.canchas.service import (
     delete_foto as svc_delete_foto,
 )
 
+from app.modules.canchas.schemas import (
+    ReglaPrecioCreateIn, ReglaPrecioUpdateIn, ReglaPrecioOut,  # ← NUEVO
+)
+from app.modules.canchas.service import (
+    list_reglas_precio as svc_list_precios,   # ← NUEVO
+    create_regla_precio as svc_create_precio, # ← NUEVO
+    update_regla_precio as svc_update_precio, # ← NUEVO
+    delete_regla_precio as svc_delete_precio, # ← NUEVO
+)
+
+
 router = APIRouter(prefix="/canchas", tags=["canchas"])
 
 @router.get(
@@ -140,4 +151,72 @@ def delete_foto_endpoint(
     current: Usuario = Depends(get_current_user),
 ):
     svc_delete_foto(db, id_cancha, id_foto, current)
+    return None
+
+# ===== Reglas de precio =====
+@router.get(
+    "/{id_cancha}/precios",
+    response_model=list[ReglaPrecioOut],
+    summary="Lista reglas de precio de una cancha",
+    description=(
+        "Devuelve todas las reglas de precio de la cancha, ordenadas por día, hora_inicio y vigencia. "
+        "Si una regla tiene `dia=null`, aplica a todos los días."
+    ),
+)
+def list_reglas_precio_endpoint(
+    id_cancha: int,
+    db: Session = Depends(get_db),
+):
+    return svc_list_precios(db, id_cancha)
+
+
+@router.post(
+    "/{id_cancha}/precios",
+    response_model=ReglaPrecioOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Crea una regla de precio (dueño/admin)",
+    description=(
+        "Crea una regla validando solapes en la misma cancha y día. "
+        "Permite `dia=null` para regla global. Requiere dueño del complejo, admin o superadmin."
+    ),
+)
+def create_regla_precio_endpoint(
+    id_cancha: int,
+    payload: ReglaPrecioCreateIn,
+    db: Session = Depends(get_db),
+    current: Usuario = Depends(get_current_user),
+):
+    # el service fuerza que payload.id_cancha == path id
+    return svc_create_precio(db, id_cancha, current, payload)
+
+
+@router.put(
+    "/precios/{id_regla}",
+    response_model=ReglaPrecioOut,
+    summary="Actualiza una regla de precio (dueño/admin)",
+    description=(
+        "Actualización parcial validando solapes. "
+        "La autorización se resuelve por la cancha dueña de la regla."
+    ),
+)
+def update_regla_precio_endpoint(
+    id_regla: int,
+    payload: ReglaPrecioUpdateIn,
+    db: Session = Depends(get_db),
+    current: Usuario = Depends(get_current_user),
+):
+    return svc_update_precio(db, id_regla, current, payload)
+
+
+@router.delete(
+    "/precios/{id_regla}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Elimina una regla de precio (dueño/admin)",
+)
+def delete_regla_precio_endpoint(
+    id_regla: int,
+    db: Session = Depends(get_db),
+    current: Usuario = Depends(get_current_user),
+):
+    svc_delete_precio(db, id_regla, current)
     return None

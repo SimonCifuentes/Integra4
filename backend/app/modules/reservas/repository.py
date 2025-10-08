@@ -1,9 +1,11 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from app.core.config import settings                 # ← para IVA y política neto/bruto
+
 
 _TZ = ZoneInfo("America/Santiago")
 
@@ -37,6 +39,113 @@ _DEF_RETURNING = """
   r.precio_total AS monto_total
 """
 
+# ====== Motor de precios (helpers) ======
+
+def _fetch_reglas_vigentes(db: Session, id_cancha: int, dow: str) -> List[Dict[str, Any]]:
+    """
+    Trae reglas vigentes para la fecha actual y el día de semana dado (enum en español).
+    Preferencia: reglas con 'dia' específico > 'dia' NULL; luego más recientes; luego menor precio.
+    """
+    sql = text("""
+        SELECT id_regla, dia, hora_inicio, hora_fin, precio_por_hora, vigente_desde, vigente_hasta
+        FROM reglas_precio
+        WHERE id_cancha = :idc
+          AND (dia IS NULL OR dia = :dow)
+          AND (vigente_desde IS NULL OR vigente_desde <= CURRENT_DATE)
+          AND (vigente_hasta IS NULL OR vigente_hasta >= CURRENT_DATE)
+        ORDER BY
+          CASE WHEN dia IS NULL THEN 1 ELSE 0 END,  -- pref. específica
+          vigente_desde DESC NULLS LAST,
+          precio_por_hora ASC
+    """)
+    rows = db.execute(sql, {"idc": id_cancha, "dow": dow}).mappings().all()
+    return [dict(r) for r in rows]
+
+def _match_regla(reglas: List[Dict[str, Any]], t: datetime) -> Optional[Dict[str, Any]]:
+    """
+    Encuentra la regla cuya franja [hora_inicio, hora_fin) contiene al instante t.
+    """
+    for r in reglas:
+        hi = datetime(t.year, t.month, t.day, r["hora_inicio"].hour, r["hora_inicio"].minute, tzinfo=_TZ)
+        hf = datetime(t.year, t.month, t.day, r["hora_fin"].hour,   r["hora_fin"].minute,   tzinfo=_TZ)
+        if hi <= t < hf:
+            return r
+    return None
+
+def compute_total_reserva(db: Session, *, id_cancha: int, inicio: datetime, fin: datetime) -> Dict[str, Any]:
+    """
+    Segmenta la franja [inicio, fin) por cambios de regla de precio y calcula:
+      - neto (si PRECIOS_INCLUYEN_IVA=False) o neteado (si vienen con IVA),
+      - iva (según IVA_PERCENT),
+      - total (redondeado a entero CLP).
+    Retorna además el desglose por segmentos.
+    """
+    if fin <= inicio:
+        raise ValueError("hora_fin debe ser > hora_inicio")
+
+    # map inglés->español para enum 'dia_semana' de la DB
+    mapa = {
+        "monday": "lunes",
+        "tuesday": "martes",
+        "wednesday": "miercoles",
+        "thursday": "jueves",
+        "friday": "viernes",
+        "saturday": "sabado",
+        "sunday": "domingo",
+    }
+    dow = mapa[inicio.strftime("%A").lower()]
+
+    reglas = _fetch_reglas_vigentes(db, id_cancha, dow)
+
+    cursor = inicio
+    segmentos: List[Dict[str, Any]] = []
+    while cursor < fin:
+        r = _match_regla(reglas, cursor)
+        if not r:
+            # Sin regla: tramo de 15' con precio 0 (puedes cambiar a raise si prefieres bloquear)
+            next_cut = cursor + timedelta(minutes=15)
+            price = 0.0
+        else:
+            hf = datetime(cursor.year, cursor.month, cursor.day, r["hora_fin"].hour, r["hora_fin"].minute, tzinfo=_TZ)
+            next_cut = min(fin, hf)
+            price = float(r["precio_por_hora"])
+
+        minutos = int((next_cut - cursor).total_seconds() // 60)
+        if minutos > 0:
+            subtotal_neto = round(price * (minutos / 60.0), 2)
+            segmentos.append({
+                "desde": cursor.strftime("%H:%M"),
+                "hasta": next_cut.strftime("%H:%M"),
+                "minutos": minutos,
+                "precio_por_hora": price,
+                "subtotal_neto": subtotal_neto,
+            })
+        cursor = next_cut
+
+    neto = round(sum(s["subtotal_neto"] for s in segmentos), 2)
+
+    if settings.PRECIOS_INCLUYEN_IVA:
+        # precios vienen con IVA: backout
+        total = neto
+        base  = round(neto / (1 + settings.IVA_PERCENT / 100.0), 2)
+        iva   = round(neto - base, 2)
+        neto  = base
+    else:
+        # precios netos: agregar IVA
+        iva   = round(neto * (settings.IVA_PERCENT / 100.0), 2)
+        total = round(neto + iva, 2)
+
+    # Presentación CLP entero
+    total = float(round(total))
+    iva   = float(round(total - neto))
+
+    return {
+        "segmentos": segmentos,
+        "neto": float(round(neto, 2)),
+        "iva": iva,
+        "total": total,
+    }
+
 # ====== Helpers internos ======
 def _fetch_reserva(db: Session, id_reserva: int) -> Optional[Dict[str, Any]]:
     sql = text("""
@@ -60,10 +169,14 @@ def create_reserva(db: Session, *, id_usuario: int, id_cancha: int, fecha, h_ini
     if fin <= inicio:
         raise ValueError("hora_fin debe ser > hora_inicio")
 
+    # === calcular precio_total usando reglas ===
+    pricing = compute_total_reserva(db, id_cancha=id_cancha, inicio=inicio, fin=fin)
+    precio_total = pricing["total"]
+
     sql = text(
         """
         INSERT INTO reservas (id_cancha, id_usuario, inicio, fin, estado, precio_total)
-        VALUES (:id_cancha, :id_usuario, :inicio, :fin, 'confirmada', NULL)
+        VALUES (:id_cancha, :id_usuario, :inicio, :fin, 'confirmada', :precio_total)
         RETURNING id_reserva, id_usuario, id_cancha,
                   (inicio AT TIME ZONE 'America/Santiago')::date AS fecha_reserva,
                   to_char(inicio AT TIME ZONE 'America/Santiago','HH24:MI') AS hora_inicio,
@@ -78,8 +191,11 @@ def create_reserva(db: Session, *, id_usuario: int, id_cancha: int, fecha, h_ini
             "id_usuario": id_usuario,
             "inicio": inicio,
             "fin": fin,
+            "precio_total": precio_total,
         }).mappings().one()
         db.commit()
+        # Si quieres devolver desglose de precio para debug/FE, puedes unirlo aquí:
+        # return dict(row) | {"pricing": pricing}
         return dict(row)
     except Exception as e:
         db.rollback()
@@ -88,6 +204,7 @@ def create_reserva(db: Session, *, id_usuario: int, id_cancha: int, fecha, h_ini
         if "exclude" in msg or "tstzrange" in msg or "overlap" in msg:
             raise RuntimeError("OVERLAP")
         raise
+
 
 def list_mis_reservas(db: Session, *, id_usuario: int) -> List[Dict[str, Any]]:
     sql = text(_DEF_SELECT + " WHERE r.id_usuario = :uid ORDER BY r.inicio DESC LIMIT 200")
