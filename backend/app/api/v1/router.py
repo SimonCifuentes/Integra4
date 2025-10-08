@@ -18,9 +18,11 @@ from app.modules.admin.router import router as admin
 from app.modules.superadmin.router import router as superadmin
 from app.modules.uploads.router import router as uploads
 
+# 👇 NUEVO
+from app.modules.cotizaciones.router import router as cotizaciones
+
 api_router = APIRouter()
 
-# Si cada router YA tiene prefix, no pongas prefix aquí:
 api_router.include_router(auth)
 api_router.include_router(usuarios)
 api_router.include_router(complejos)
@@ -36,11 +38,12 @@ api_router.include_router(favoritos)
 api_router.include_router(denuncias)
 api_router.include_router(uploads)
 
-# Para estos dos, si dentro NO tienen prefix, mantenlos con prefix aquí:
+# 👇 NUEVO
+api_router.include_router(cotizaciones)
+
 api_router.include_router(admin, prefix="/admin")
 api_router.include_router(superadmin, prefix="/superadmin")
 
-# Meta endpoints útiles
 @api_router.get("/healthz", tags=["_meta"])
 def healthz():
     return {"status": "ok"}
