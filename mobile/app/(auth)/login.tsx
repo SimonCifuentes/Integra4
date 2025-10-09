@@ -22,10 +22,12 @@ export default function LoginScreen() {
       const { access_token, user } = await login.mutateAsync({ email, password });
       await setSession(access_token, user);
       router.replace('/(tabs)');
-    } catch (e: any) {
-      const msg = e?.response?.data?.detail || 'No se pudo iniciar sesión.';
-      setError(msg);
-    }
+   } catch (e: any) {
+  console.error("Login error:", e); // 👈 para ver en consola lo que realmente falla
+  const msg = e?.response?.data?.detail || 'No se pudo iniciar sesión.';
+  setError(msg);
+}
+
   };
 
   return (
