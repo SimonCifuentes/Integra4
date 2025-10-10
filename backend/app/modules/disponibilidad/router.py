@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import date
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from app.shared.deps import get_db
 from app.modules.disponibilidad.schemas import DisponibilidadOut, Slot
@@ -15,7 +15,14 @@ def disponibilidad(
     slot_min: int = Query(60, ge=15, le=180),
     db: Session = Depends(get_db),
 ):
+    # Obtener los slots disponibles usando el servicio
     slots = Service.slots(db, id_cancha=id_cancha, fecha=fecha, slot_min=slot_min)
+    
+    # Si no hay slots disponibles, lanzar una excepción 404
+    if not slots:
+        raise HTTPException(status_code=404, detail="No hay disponibilidad para la cancha en esa fecha.")
+    
+    # Retornar la respuesta de DisponibilidadOut
     return DisponibilidadOut(
         id_cancha=id_cancha,
         fecha=fecha,
