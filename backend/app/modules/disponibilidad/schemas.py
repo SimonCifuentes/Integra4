@@ -1,13 +1,16 @@
-from __future__ import annotations
-from datetime import date
-from pydantic import BaseModel, Field
+from datetime import date, datetime
+from pydantic import BaseModel, Field, conint
+from typing import Optional
 
-class Slot(BaseModel):
-    inicio: str = Field(..., description="HH:MM")
-    fin: str = Field(..., description="HH:MM")
+class SlotOut(BaseModel):
+    inicio: datetime
+    fin: datetime
+    etiqueta: str
+    precio: Optional[float] = None
 
-class DisponibilidadOut(BaseModel):
-    id_cancha: int
-    fecha: date
-    slot_min: int
-    slots: list[Slot]
+class DisponibilidadQuery(BaseModel):
+    id_cancha: int = Field(..., ge=1)
+    fecha: Optional[date] = None
+    fecha_inicio: Optional[date] = None
+    fecha_fin: Optional[date] = None
+    slot_minutos: conint(ge=15, le=240) = 60

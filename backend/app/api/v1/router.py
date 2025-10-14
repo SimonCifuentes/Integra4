@@ -18,8 +18,13 @@ from app.modules.admin.router import router as admin
 from app.modules.superadmin.router import router as superadmin
 from app.modules.uploads.router import router as uploads
 from app.modules.nearby.router import router as nearby
-api_router = APIRouter()
+from app.modules.disponibilidad.router import router as disponibilidad
+from app.modules.bloqueos.router import router as bloqueos
+from app.modules.horarios.router import router as horarios
 
+
+
+api_router = APIRouter()
 # Si cada router YA tiene prefix, no pongas prefix aquí:
 api_router.include_router(auth)
 api_router.include_router(usuarios)
@@ -36,6 +41,9 @@ api_router.include_router(favoritos)
 api_router.include_router(denuncias)
 api_router.include_router(uploads)
 api_router.include_router(nearby)
+api_router.include_router(disponibilidad)
+api_router.include_router(bloqueos)
+api_router.include_router(horarios)
 
 # Para estos dos, si dentro NO tienen prefix, mantenlos con prefix aquí:
 api_router.include_router(admin, prefix="/admin")
