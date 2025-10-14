@@ -1,11 +1,15 @@
-// app/(auth)/login.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, TextInput, Button, Text, ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Switch, TouchableOpacity, StyleSheet } from 'react-native';
-import { useLogin } from '../../src/features/features/auth/hooks';
-// filepath: c:\Users\nachi\OneDrive\Documentos\GitHub\Integra4\mobile\app\(auth)\login.tsx
-import { useAuth } from '../../src/stores/auth';
-import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+﻿// app/(auth)/login.tsx
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Animated, Easing, Switch,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
+import { useLogin } from "@/src/features/features/auth/hooks";
+import { useAuth } from "@/src/stores/auth";
 
 // 🔒 Desactiva el bypass por completo
 const DEV_BYPASS_AUTH = false;
@@ -48,7 +52,7 @@ export default function LoginScreen() {
       const { access_token, user } = await login.mutateAsync({ email, password });
 
       // 👉 Guarda la sesión (el store debe encargarse de persistir el token en SecureStore)
-      await setSession(access_token, user, { remember }); // si tu setSession recibe opciones
+      await setSession(access_token, user); // si tu setSession recibe opciones
 
       // Vibración suave de éxito (opcional)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

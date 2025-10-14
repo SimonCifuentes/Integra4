@@ -28,17 +28,46 @@ router = APIRouter(prefix="/canchas", tags=["canchas"])
     response_model=CanchasListOut,
     summary="Lista canchas",
     description=(
-        "Devuelve canchas con filtros por **deporte**, **techada** (alias de `cubierta`), "
-        "**iluminación**, **precio máximo** y **cercanas** (`lat`/`lon` + `max_km`).\n\n"
-        "Ordena por `distancia`, `precio`, `rating`, `nombre` o `recientes`.\n"
-        "Si envías `lat`/`lon` se calcula `distancia_km` usando PostGIS si está disponible."
+        "Filtros: `q`, `id_complejo`, `deporte`, **techada** (`cubierta` o alias `techada`), "
+        "`iluminacion`, `max_precio` y **cercanas** (`lat`/`lon` + `max_km`).\n\n"
+        "Orden: `distancia`, `precio`, `rating`, `nombre`, `recientes`.\n"
+        "Si envías `lat`/`lon` se incluye `distancia_km`."
     ),
+    responses={
+        200: {
+            "description": "OK",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "items": [
+                            {
+                                "id_cancha": 45,
+                                "id_complejo": 12,
+                                "nombre": "Cancha 7",
+                                "deporte": "fútbol",
+                                "cubierta": False,
+                                "activo": True,
+                                "precio_desde": 12000.0,
+                                "rating_promedio": 4.4,
+                                "total_resenas": 54,
+                                "distancia_km": 1.35
+                            }
+                        ],
+                        "total": 1,
+                        "page": 1,
+                        "page_size": 20
+                    }
+                }
+            }
+        }
+    }
 )
 def list_endpoint(
     params: CanchasQuery = Depends(),
     db: Session = Depends(get_db),
 ):
     return svc_list(db, params)
+
 
 @router.post(
     "",

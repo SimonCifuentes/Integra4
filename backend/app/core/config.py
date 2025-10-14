@@ -1,4 +1,6 @@
 # app/core/config.py  (antes importabas BaseSettings desde pydantic)
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -22,12 +24,19 @@ class Settings(BaseSettings):
     ASYNC_DATABASE_URL: str | None = None
 
     # === Email (opc) ===
-    SMTP_HOST: str | None = None
-    SMTP_PORT: int | None = 587
-    SMTP_USER: str | None = None
-    SMTP_PASSWORD: str | None = None
-    EMAIL_FROM: str | None = None
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER: str | None = os.getenv("SMTP_USER")
+    SMTP_PASSWORD: str | None = os.getenv("SMTP_PASSWORD")
+    SMTP_FROM_EMAIL: str | None = os.getenv("SMTP_FROM_EMAIL", os.getenv("SMTP_USER"))
+    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "SportHub Temuco")
+    MAIL_STARTTLS: bool = os.getenv("MAIL_STARTTLS", "True").lower() == "true"
+    MAIL_ENABLED: bool = os.getenv("MAIL_ENABLED", "true").lower() == "true"
+    MAIL_ECHO: bool = os.getenv("MAIL_ECHO", "false").lower() == "true"
 
+    OTP_EXPIRE_MINUTES: int = int(os.getenv("OTP_EXPIRE_MINUTES", "15"))
+    OTP_MAX_ATTEMPTS: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
+    RESEND_COOLDOWN_SECONDS: int = int(os.getenv("RESEND_COOLDOWN_SECONDS", "60"))
     # === Storage (opc) ===
     STORAGE_PROVIDER: str = "local"
     S3_BUCKET: str | None = None

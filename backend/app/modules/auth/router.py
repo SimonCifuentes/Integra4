@@ -120,42 +120,51 @@ def refresh_endpoint(payload: RefreshIn, db: Session = Depends(get_db)):
 def logout_endpoint(payload: LogoutIn):
     return svc_logout(payload)
 
+
+@router.post(
+    "/send-verification",
+    response_model=SimpleMsg,
+    summary="Enviar código de verificación",
+    description="Genera y envía un código de verificación al correo (aplica cooldown para evitar spam).",
+    response_description="Mensaje indicando que se envió el código."
+)
+def send_verification_endpoint(payload: ResendVerificationIn, db: Session = Depends(get_db)):
+    # reutiliza el servicio existente
+    svc_resend_verification(db, payload.email)
+    return {"message": "Si el correo existe y no estaba verificado, se envió el código de verificación."}
+
 @router.post(
     "/resend-verification",
     response_model=SimpleMsg,
     summary="Reenviar verificación de correo",
-    description="Envía nuevamente el correo de **verificación de cuenta**. En entorno de pruebas, retorna el token en el mensaje.",
-    response_description="Mensaje indicando que se envió la verificación."
 )
 def resend_verification_endpoint(payload: ResendVerificationIn, db: Session = Depends(get_db)):
-    return svc_resend_verification(db, payload)
+    svc_resend_verification(db, payload.email)
+    return {"message": "Si el correo existe y no estaba verificado, se envió un nuevo código."}
 
 @router.post(
     "/verify-email",
     response_model=SimpleMsg,
     summary="Verificar correo",
-    description="Confirma el **correo electrónico** usando el **token de verificación**.",
-    response_description="Mensaje indicando que el correo fue verificado."
 )
 def verify_email_endpoint(payload: VerifyEmailIn, db: Session = Depends(get_db)):
-    return svc_verify_email(db, payload)
+    svc_verify_email(db, payload.email, payload.code)
+    return {"message": "Correo verificado correctamente."}
 
 @router.post(
     "/forgot-password",
     response_model=SimpleMsg,
     summary="Olvidé mi contraseña (solicitar reset)",
-    description="Genera un **token de restablecimiento** y envía instrucciones al correo. En pruebas, retorna el token en el mensaje.",
-    response_description="Mensaje indicando que se enviaron instrucciones de restablecimiento."
 )
 def forgot_password_endpoint(payload: ForgotPasswordIn, db: Session = Depends(get_db)):
-    return svc_forgot_password(db, payload)
+    svc_forgot_password(db, payload.email)
+    return {"message": "Si el correo existe, te enviamos un código para restablecer la contraseña."}
 
 @router.post(
     "/reset-password",
-    response_model=TokenOut,
+    response_model=SimpleMsg,   # <- cambia a SimpleMsg
     summary="Restablecer contraseña con token",
-    description="Cambia la contraseña usando un **token de restablecimiento** válido y retorna un **token de acceso** + **perfil**.",
-    response_description="Token de acceso y perfil del usuario con la nueva contraseña."
 )
 def reset_password_endpoint(payload: ResetPasswordIn, db: Session = Depends(get_db)):
-    return svc_reset_password(db, payload)
+    svc_reset_password(db, payload.email, payload.code, payload.new_password)
+    return {"message": "Contraseña actualizada correctamente."}

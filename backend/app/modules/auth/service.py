@@ -1,9 +1,12 @@
-import os
 import uuid
 import hashlib
+
+# app/modules/auth/service.py
+import os, secrets, string
+
+from app.core.mailer import send_verification_code, send_reset_code
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-
 from fastapi import HTTPException, status
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
@@ -20,7 +23,12 @@ from app.modules.auth.schemas import (
 
 # =========================
 # Configuración tokens extra
+
 # =========================
+OTP_EXPIRE_MINUTES = int(os.getenv("OTP_EXPIRE_MINUTES", "15"))
+OTP_MAX_ATTEMPTS   = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
+RESEND_COOLDOWN    = int(os.getenv("RESEND_COOLDOWN_SECONDS", "60"))
+
 JWT_ALG = os.getenv("JWT_ALG", "HS256")
 
 REFRESH_SECRET = os.getenv("REFRESH_SECRET_KEY", "CHANGE_ME_REFRESH_SECRET")
@@ -32,6 +40,13 @@ VERIFY_EXPIRE_HOURS    = int(os.getenv("VERIFY_EXPIRE_HOURS", "24"))
 RESET_EXPIRE_MINUTES   = int(os.getenv("RESET_EXPIRE_MINUTES", "30"))
 
 REVOKED_JTIS: set[str] = set()  # revocación en memoria (si necesitas persistente -> tabla/Redis)
+def _now():
+    return datetime.now(timezone.utc)
+
+def _generate_code(length=6) -> str:
+    # solo dígitos o alfanumérico; tu columna soporta hasta 12
+    digits = string.digits
+    return "".join(secrets.choice(digits) for _ in range(length))
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -70,7 +85,9 @@ def register(db: Session, data: UserCreate) -> TokenOut:
             avatar_url=user.avatar_url,
             rol=map_role_db_to_public(user.rol),
         ),
+        
     )
+
 
 def login(db: Session, data: UserLogin) -> TokenOut:
     email_norm = data.email.strip().lower()
@@ -171,86 +188,82 @@ def logout(payload: LogoutIn) -> SimpleMsg:
             pass
     return SimpleMsg(detail="Sesión cerrada.")
 
-# ---- Verify email / resend ----
-def verify_email(db: Session, body: VerifyEmailIn) -> SimpleMsg:
-    try:
-        data = jwt.decode(body.token, ACTION_SECRET, algorithms=[JWT_ALG])
-        if data.get("type") != "action" or data.get("purpose") != "verify_email":
-            raise JWTError("Propósito inválido")
-        uid = int(data["sub"])
-        user = repo.get_by_id(db, uid)
-        if not user:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado")
-        if user.verificado:
-            return SimpleMsg(detail="Correo ya estaba verificado.")
-        repo.mark_email_verified(db, user)
-        return SimpleMsg(detail="Correo verificado exitosamente.")
-    except JWTError as e:
-        raise HTTPException(status_code=400, detail=f"Token inválido: {e}")
-
-def resend_verification(db: Session, body: ResendVerificationIn) -> SimpleMsg:
-    user = repo.get_by_email(db, body.email.strip().lower())
-    # Mensaje genérico para no revelar existencia
-    generic = "Si la cuenta existe, se envió un correo de verificación."
+def resend_verification(db: Session, email: str) -> None:
+    user = repo.get_user_by_email(db, email)
     if not user:
-        return SimpleMsg(detail=generic)
+        # No revelamos si existe
+        return
     if user.verificado:
-        return SimpleMsg(detail="Tu correo ya está verificado.")
-    exp = _now_utc() + timedelta(hours=VERIFY_EXPIRE_HOURS)
-    payload = {
-        "sub": str(user.id_usuario),
-        "type": "action",
-        "purpose": "verify_email",
-        "iat": int(_now_utc().timestamp()),
-        "exp": int(exp.timestamp()),
-    }
-    token = jwt.encode(payload, ACTION_SECRET, algorithm=JWT_ALG)
-    # En producción: enviar email. Para QA devolvemos el token:
-    return SimpleMsg(detail=f"{generic} token={token}")
+        return
 
-# ---- Forgot / Reset password ----
-def forgot_password(db: Session, body: ForgotPasswordIn) -> SimpleMsg:
-    user = repo.get_by_email(db, body.email.strip().lower())
-    generic = "Si la cuenta existe, se envió un correo para restablecer."
+    if user.verification_last_sent and (_now() - user.verification_last_sent).total_seconds() < RESEND_COOLDOWN:
+        raise HTTPException(status_code=429, detail="Debes esperar antes de reenviar el código.")
+
+    code = _generate_code(6)
+    expires_at = _now() + timedelta(minutes=OTP_EXPIRE_MINUTES)
+    repo.set_verification_code(db, user, code, expires_at)
+
+    # envía correo (usa tu mailer con plantilla)
+    send_verification_code(to=email, code=code, minutes=OTP_EXPIRE_MINUTES)
+
+def verify_email(db: Session, email: str, code: str) -> None:
+    user = repo.get_user_by_email(db, email)
     if not user:
-        return SimpleMsg(detail=generic)
-    # versionamos el token con el hash actual para invalidar si ya cambió
-    exp = _now_utc() + timedelta(minutes=RESET_EXPIRE_MINUTES)
-    payload = {
-        "sub": str(user.id_usuario),
-        "type": "action",
-        "purpose": "reset_password",
-        "ver": _sha256(user.hashed_password),
-        "iat": int(_now_utc().timestamp()),
-        "exp": int(exp.timestamp()),
-    }
-    token = jwt.encode(payload, ACTION_SECRET, algorithm=JWT_ALG)
-    return SimpleMsg(detail=f"{generic} token={token}")
+        # no revelamos existencia
+        return
+    if user.verificado:
+        return
 
-def reset_password(db: Session, body: ResetPasswordIn) -> TokenOut:
-    # 1) sacar user_id
-    try:
-        raw = jwt.decode(body.token, ACTION_SECRET, algorithms=[JWT_ALG])
-        if raw.get("type") != "action" or raw.get("purpose") != "reset_password":
-            raise JWTError("Propósito inválido")
-        uid = int(raw["sub"])
-    except JWTError as e:
-        raise HTTPException(status_code=400, detail=f"Token inválido: {e}")
+    if user.verification_expires_at is None or _now() > user.verification_expires_at:
+        raise HTTPException(status_code=400, detail="El código ha expirado. Solicita uno nuevo.")
 
-    user = repo.get_by_id(db, uid)
+    if (user.verification_attempts or 0) >= OTP_MAX_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Has superado el número de intentos permitidos.")
+
+    if code != (user.verification_code or ""):
+        repo.inc_verification_attempt(db, user)
+        raise HTTPException(status_code=400, detail="Código inválido.")
+
+    # OK
+    repo.mark_verified(db, user)
+
+# =============== RESET DE CONTRASEÑA ===============
+
+def forgot_password(db: Session, email: str) -> None:
+    user = repo.get_user_by_email(db, email)
     if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        # silenciar para no filtrar existencia
+        return
 
-    # 2) validar versión con hash actual
-    try:
-        data = jwt.decode(body.token, ACTION_SECRET, algorithms=[JWT_ALG])
-        if data.get("ver") != _sha256(user.hashed_password):
-            raise JWTError("Token desactualizado")
-    except JWTError as e:
-        raise HTTPException(status_code=400, detail=f"Token inválido: {e}")
+    if user.reset_last_sent and (_now() - user.reset_last_sent).total_seconds() < RESEND_COOLDOWN:
+        raise HTTPException(status_code=429, detail="Debes esperar antes de solicitar otro código.")
 
+    code = _generate_code(6)
+    expires_at = _now() + timedelta(minutes=OTP_EXPIRE_MINUTES)
+    repo.set_reset_code(db, user, code, expires_at)
+
+    send_reset_code(to=email, code=code, minutes=OTP_EXPIRE_MINUTES)
+
+def reset_password(db: Session, email: str, code: str, new_password: str) -> None:
+    user = repo.get_user_by_email(db, email)
+    if not user:
+        return
+
+    if user.reset_expires_at is None or _now() > user.reset_expires_at:
+        raise HTTPException(status_code=400, detail="El código ha expirado. Genera uno nuevo.")
+
+    if (user.reset_attempts or 0) >= OTP_MAX_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Has superado el número de intentos permitidos.")
+
+    if code != (user.reset_code or ""):
+        repo.inc_reset_attempt(db, user)
+        raise HTTPException(status_code=400, detail="Código inválido.")
+
+    repo.update_password(db, user, hash_password(new_password))
     # 3) actualizar contraseña
-    new_hash = hash_password(body.new_password)
+    # 👇 aquí estaba el error
+    new_hash = hash_password(new_password)
+    repo.update_password(db, user, new_hash)
     user = repo.update_password_hash(db, user, new_hash)
 
     # 4) emitir nuevo access para iniciar sesión al tiro

@@ -27,15 +27,46 @@ router = APIRouter(prefix="/complejos", tags=["complejos"])
     response_model=ComplejosListOut,
     summary="Listar complejos",
     description=(
-        "Lista recintos con **filtros**: texto (`q`), `comuna` (nombre), `id_comuna` (FK), `deporte`, y **distancia** (lat/lon + `max_km`). "
-        "Orden por `distancia`, `rating`, `nombre` o `recientes`. Soporta paginación."
+        "Lista recintos con **filtros**: texto (`q`), `comuna`/`id_comuna`, `deporte`, "
+        "y **distancia** (`lat`/`lon` + `max_km`). Orden por `distancia`, `rating`, `nombre` o `recientes`."
     ),
-    response_description="Listado paginado de complejos."
+    response_description="Listado paginado de complejos.",
+    responses={
+        200: {
+            "description": "OK",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "items": [
+                            {
+                                "id_complejo": 12,
+                                "id_dueno": 3,
+                                "nombre": "Complejo Deportivo La Araucanía",
+                                "direccion": "Av. Alemania 1234",
+                                "comuna": "Temuco",
+                                "id_comuna": 9101,
+                                "latitud": -38.73799,
+                                "longitud": -72.59037,
+                                "descripcion": "Canchas techadas con iluminación.",
+                                "activo": True,
+                                "rating_promedio": 4.6,
+                                "total_resenas": 128,
+                                "distancia_km": 1.35
+                            }
+                        ],
+                        "total": 1,
+                        "page": 1,
+                        "page_size": 20
+                    }
+                }
+            }
+        }
+    }
 )
 def list_endpoint(
     q: str | None = Query(None, description="Búsqueda por nombre/dirección/comuna"),
     comuna: str | None = Query(None, description="Nombre exacto de la comuna"),
-    id_comuna: int | None = Query(None, description="ID de comuna si tu esquema usa FK"),
+    id_comuna: int | None = Query(None, description="ID de comuna (si usas FK)"),
     deporte: str | None = Query(None),
     lat: float | None = Query(None, ge=-90, le=90),
     lon: float | None = Query(None, ge=-180, le=180),

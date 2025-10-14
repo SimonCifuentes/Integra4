@@ -1,13 +1,63 @@
+from __future__ import annotations
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from app.modules.auth.model import Usuario
+import datetime as dt
+
+# --- LOOKUPS ---
+def get_by_id(db: Session, user_id: int) -> Usuario | None:
+    return db.get(Usuario, user_id)
 
 def get_by_email(db: Session, email: str) -> Usuario | None:
-    # case-insensitive (por si tu columna no es CITEXT)
+    # búsqueda case-insensitive
     stmt = select(Usuario).where(func.lower(Usuario.email) == email.lower())
     return db.execute(stmt).scalar_one_or_none()
 
+# alias para compatibilidad con código que usa el otro nombre
+get_user_by_email = get_by_email
+
+
+def get_user_by_email(db: Session, email: str) -> Usuario | None:
+    return db.execute(select(Usuario).where(Usuario.email == email)).scalar_one_or_none()
+
+def set_verification_code(db: Session, user: Usuario, code: str, expires_at: datetime) -> None:
+    user.verification_code = code
+    user.verification_expires_at = expires_at
+    user.verification_attempts = 0
+    user.verification_last_sent = datetime.now(timezone.utc)
+    db.add(user); db.commit(); db.refresh(user)
+
+
+def inc_verification_attempt(db: Session, user: Usuario) -> None:
+    user.verification_attempts = (user.verification_attempts or 0) + 1
+    db.add(user); db.commit()
+
+def mark_verified(db: Session, user: Usuario) -> None:
+    user.verificado = True
+    user.verification_code = None
+    user.verification_expires_at = None
+    user.verification_attempts = 0
+    db.add(user); db.commit(); db.refresh(user)
+
+def set_reset_code(db: Session, user: Usuario, code: str, expires_at: datetime) -> None:
+    user.reset_code = code
+    user.reset_expires_at = expires_at
+    user.reset_attempts = 0
+    user.reset_last_sent = datetime.now(timezone.utc)
+    db.add(user); db.commit(); db.refresh(user)
+
+def inc_reset_attempt(db: Session, user: Usuario) -> None:
+    user.reset_attempts = (user.reset_attempts or 0) + 1
+    db.add(user); db.commit()
+
+def update_password(db: Session, user: Usuario, new_hashed: str) -> None:
+    user.hashed_password = new_hashed
+    user.reset_code = None
+    user.reset_expires_at = None
+    user.reset_attempts = 0
+    db.add(user); db.commit(); db.refresh(user)
 def get_by_id(db: Session, user_id: int) -> Usuario | None:
     stmt = select(Usuario).where(Usuario.id_usuario == user_id)
     return db.execute(stmt).scalar_one_or_none()
