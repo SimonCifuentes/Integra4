@@ -5,6 +5,8 @@ from app.modules.auth.model import Usuario
 from app.modules.reservas.schemas import ReservaCreateIn, ReservaOut
 from app.modules.reservas.service import Service
 from app.modules.reservas.schemas import QuoteIn, QuoteOut  # ← NUEVO
+from sqlalchemy import text
+from app.modules.auditoria.repository import logs_de_reserva
 
 
 router = APIRouter(prefix="/reservas", tags=["reservas"])
@@ -92,3 +94,37 @@ def quote_reserva(
     """
     return Service.cotizar(db, data=body)
 
+@router.get("/{id_reserva}/logs")
+def ver_logs_reserva(
+    id_reserva: int,
+    user: Usuario = Depends(require_roles("usuario", "dueno", "admin", "superadmin")),
+    db: Session = Depends(get_db)
+):
+    """
+    Devuelve los eventos de auditoría asociados a una reserva.
+    Autorizado si:
+      - el usuario es dueño de la reserva
+      - o es dueño del complejo de esa reserva
+      - o es admin/superadmin
+    """
+    is_admin = getattr(user, "rol", None) in ("admin", "superadmin")
+
+    row = db.execute(text("""
+        SELECT r.id_usuario, co.id_dueno AS dueno_id
+        FROM reservas r
+        JOIN canchas c    ON c.id_cancha = r.id_cancha
+        JOIN complejos co ON co.id_complejo = c.id_complejo
+        WHERE r.id_reserva = :rid
+        LIMIT 1
+    """), {"rid": id_reserva}).mappings().one_or_none()
+
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reserva no encontrada")
+
+    es_propietario = (row["id_usuario"] == user.id_usuario)
+    es_dueno = (row["dueno_id"] == user.id_usuario)
+
+    if not (is_admin or es_propietario or es_dueno):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")
+
+    return logs_de_reserva(db, id_reserva=id_reserva, limit=100, offset=0)

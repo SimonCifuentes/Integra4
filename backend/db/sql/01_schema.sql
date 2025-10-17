@@ -293,6 +293,28 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+-- Evitar que un USUARIO tenga dos reservas activas (pendiente/confirmada) que se solapen
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'excl_reservas_usuario_solapadas'
+    ) THEN
+        ALTER TABLE reservas
+        ADD CONSTRAINT excl_reservas_usuario_solapadas
+        EXCLUDE USING GIST (
+            id_usuario WITH =,
+            tstzrange(inicio, fin, '[)') WITH &&
+        )
+        WHERE (estado IN ('pendiente','confirmada'));
+    END IF;
+END $$;
+
+-- (Opcional) Evitar duplicado exacto por doble envío: misma cancha y mismo rango
+CREATE UNIQUE INDEX IF NOT EXISTS ux_reservas_exacta
+ON reservas (id_cancha, inicio, fin)
+WHERE (estado IN ('pendiente','confirmada'));
+
+
+
 CREATE TRIGGER trg_reservas_updated
 BEFORE UPDATE ON reservas
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();

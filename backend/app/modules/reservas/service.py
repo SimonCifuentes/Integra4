@@ -1,4 +1,5 @@
 from __future__ import annotations
+from app.modules.auditoria.repository import log_accion
 from sqlalchemy.orm import Session
 from app.modules.reservas import repository as repo
 from datetime import datetime

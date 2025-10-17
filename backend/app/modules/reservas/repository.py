@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.core.config import settings                 # ← para IVA y política neto/bruto
+from sqlalchemy import text
 
 
 _TZ = ZoneInfo("America/Santiago")
@@ -161,6 +162,22 @@ def _ya_empezo(db: Session, id_reserva: int) -> bool:
     sql = text("SELECT (inicio <= now()) AS ya FROM reservas WHERE id_reserva=:rid")
     val = db.execute(sql, {"rid": id_reserva}).scalar()
     return bool(val)
+
+def _existe_solape_usuario(db: Session, id_usuario: int, inicio: datetime, fin: datetime) -> bool:
+    """
+    ¿El usuario ya tiene una reserva activa (pendiente/confirmada) que se solape con [inicio, fin)?
+    Se usa como pre-chequeo rápido (la garantía real debe estar en la DB con EXCLUDE).
+    """
+    sql = text("""
+        SELECT 1
+        FROM reservas
+        WHERE id_usuario = :uid
+          AND estado IN ('pendiente','confirmada')
+          AND tstzrange(inicio, fin, '[)') && tstzrange(:ini, :fin, '[)')
+        LIMIT 1
+    """)
+    return db.execute(sql, {"uid": id_usuario, "ini": inicio, "fin": fin}).first() is not None
+
 
 # ====== Crear y listar (lo tuyo, intacto) ======
 def create_reserva(db: Session, *, id_usuario: int, id_cancha: int, fecha, h_ini, h_fin) -> Dict[str, Any]:
