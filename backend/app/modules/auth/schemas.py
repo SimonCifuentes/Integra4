@@ -89,3 +89,14 @@ class ChangePasswordIn(BaseModel):
 class PushTokenIn(BaseModel):
     token: str = Field(min_length=20)
     platform: Optional[Literal["android", "ios", "web"]] = "android"
+
+# --- Pre-registro stateless (sin DB intermedia) ---
+class RegisterInitOut(BaseModel):
+    message: str
+    action_token: str  # JWT firmado con ACTION_SECRET
+
+class VerifyEmailWithTokenIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=12)
+    action_token: str = Field(min_length=20)
+

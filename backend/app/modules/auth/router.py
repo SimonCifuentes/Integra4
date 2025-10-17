@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request 
 from sqlalchemy.orm import Session
 
 from app.shared.deps import get_db, get_current_user
@@ -6,7 +6,7 @@ from app.modules.auth.schemas import (
     UserCreate, UserLogin, TokenOut, UserPublic, UserUpdate,
     AccessTokenOnly, RefreshIn, LogoutIn, SimpleMsg,
     VerifyEmailIn, ResendVerificationIn, ForgotPasswordIn, ResetPasswordIn,
-    ChangePasswordIn, PushTokenIn
+    ChangePasswordIn, PushTokenIn, UserCreate, TokenOut, RegisterInitOut, VerifyEmailWithTokenIn
 )
 from app.modules.auth.service import (
     register as svc_register,
@@ -22,10 +22,45 @@ from app.modules.auth.service import (
     change_my_password as svc_change_my_password,
     register_push_token as svc_register_push_token,
 )
+from app.modules.auth.service import (
+    register_init_stateless, register_verify_stateless,
+)
 from app.modules.auth.model import Usuario
 
 # Mantén el nombre del tag "auth" para que coincida con openapi_tags de main.py
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# ----- Pre-registro stateless -----
+
+@router.post(
+    "/register/init",
+    response_model=RegisterInitOut,
+    summary="Inicio de registro (stateless)",
+    description="Envía un OTP al email y devuelve un action_token firmado (no crea el usuario todavía)."
+)
+def register_init_stateless_endpoint(
+    payload: UserCreate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    ip = request.client.host if request.client else None
+    return register_init_stateless(db, payload, ip)
+
+@router.post(
+    "/register/verify",
+    response_model=TokenOut,
+    status_code=201,
+    summary="Verificar OTP y crear usuario",
+    description="Valida el action_token + OTP y recién crea el usuario verificado."
+)
+def register_verify_stateless_endpoint(
+    payload: VerifyEmailWithTokenIn,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    ip = request.client.host if request.client else None
+    return register_verify_stateless(db, payload, ip)
+
 
 @router.post(
     "/register",

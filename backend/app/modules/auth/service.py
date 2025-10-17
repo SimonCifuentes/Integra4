@@ -295,3 +295,85 @@ def change_my_password(db: Session, user: Usuario, body: ChangePasswordIn) -> Si
 def register_push_token(db: Session, user: Usuario, body: PushTokenIn) -> SimpleMsg:
     repo.save_push_token(db, user, body.token, body.platform)
     return SimpleMsg(detail="Token de notificaciones actualizado.")
+
+# ======== PRE-REGISTRO STATELESS (sin tocar BD) ========
+
+def _gen_otp() -> str:
+    # Puedes reutilizar _generate_code si prefieres; aquí fijo 6 dígitos.
+    return "".join(secrets.choice(string.digits) for _ in range(6))
+
+def register_init_stateless(db: Session, data: UserCreate, ip: Optional[str]) -> dict:
+    email_norm = data.email.strip().lower()
+    # 1) si ya existe, bloquear
+    if repo.get_by_email(db, email_norm):
+        raise HTTPException(status_code=409, detail="El email ya está registrado")
+
+    # 2) generar OTP y enviar correo
+    code = _gen_otp()
+    send_verification_code(to=email_norm, code=code, minutes=OTP_EXPIRE_MINUTES)
+
+    # 3) construir JWT de acción (no guardamos nada en BD)
+    claims = {
+        "typ": "register",
+        "email": email_norm,
+        "nombre": data.nombre,
+        "apellido": data.apellido,
+        "telefono": data.telefono,
+        "hashed_password": hash_password(data.password),
+        "otp_hash": _sha256(code),
+        "ip": ip,
+        "iat": int(_now().timestamp()),
+        "exp": int((_now() + timedelta(minutes=OTP_EXPIRE_MINUTES)).timestamp()),
+    }
+    action_token = jwt.encode(claims, ACTION_SECRET, algorithm=JWT_ALG)
+    return {"message": "Te enviamos un código de verificación a tu correo.", "action_token": action_token}
+
+def register_verify_stateless(db: Session, body, ip: Optional[str]) -> TokenOut:
+    # body: VerifyEmailWithTokenIn
+    try:
+        claims = jwt.decode(body.action_token, ACTION_SECRET, algorithms=[JWT_ALG])
+    except JWTError:
+        raise HTTPException(status_code=400, detail="Token de acción inválido o expirado.")
+
+    if claims.get("typ") != "register":
+        raise HTTPException(status_code=400, detail="Tipo de token inválido.")
+    if str(claims.get("email")).lower() != body.email.strip().lower():
+        raise HTTPException(status_code=400, detail="Email no coincide con el token.")
+
+    # 1) validar OTP
+    if _sha256(body.code) != claims.get("otp_hash"):
+        raise HTTPException(status_code=400, detail="Código inválido.")
+
+    # 2) evitar duplicados por replay
+    if repo.get_by_email(db, body.email):
+        raise HTTPException(status_code=409, detail="El email ya está registrado")
+
+    # 3) crear usuario verificado
+    usuario = repo.create_user(
+        db,
+        nombre=claims.get("nombre"),
+        apellido=claims.get("apellido"),
+        email=claims["email"],
+        hashed_password=claims["hashed_password"],
+        telefono=claims.get("telefono"),
+    )
+    # marcar verificado y activo según tu modelo
+    usuario.verificado = True
+    usuario.esta_activo = True
+    db.add(usuario)
+    db.commit()
+    db.refresh(usuario)
+
+    token = create_access_token(usuario.id_usuario, extra={"role": usuario.rol})
+    return TokenOut(
+        access_token=token,
+        user=UserPublic(
+            id_usuario=usuario.id_usuario,
+            nombre=usuario.nombre,
+            apellido=usuario.apellido,
+            email=usuario.email,
+            telefono=usuario.telefono,
+            avatar_url=usuario.avatar_url,
+            rol=map_role_db_to_public(usuario.rol),
+        ),
+    )
