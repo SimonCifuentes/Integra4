@@ -7,7 +7,7 @@ def map_role_db_to_public(db_value: str) -> str:
     return {
         "usuario": "usuario",
         "dueno": "admin",          # dueño del complejo
-        "admin": "super_admin",    # global
+        "admin": "admin",    # global
         "superadmin": "super_admin"
     }.get(db_value, "usuario")
 
