@@ -205,48 +205,65 @@ def cotizar(db: Session, payload: Dict[str, Any]) -> Dict[str, Any]:
         detalle = promo.get("titulo")
     total = round(max(0.0, subtotal - descuento), 2)
     return {"moneda": "CLP", "subtotal": subtotal, "descuento": descuento, "total": total, "detalle": detalle}
-def listar_admin(db, admin_id: int, filtros: dict):
-    """
-    Lista reservas SOLO del complejo del admin y sus canchas.
-    Asumimos esquema: complejos(id_complejo, id_admin) y canchas(id_cancha, id_complejo)
-    """
-    wh = []
+def listar_admin(db: Session, admin_id: int, filtros: dict):
     p = {"admin_id": admin_id}
+    wh = []
 
-    # restringimos a su complejo y canchas
+    # Alcance: canchas de complejos cuyo id_dueno = admin
     wh.append("""
-      r.id_cancha IN (
-        SELECT c.id_cancha
-        FROM canchas c
-        JOIN complejos x ON x.id_complejo = c.id_complejo
-        WHERE x.id_admin = :admin_id
-      )
+        r.id_cancha IN (
+            SELECT c.id_cancha
+            FROM canchas c
+            JOIN complejos x ON x.id_complejo = c.id_complejo
+            WHERE x.id_dueno = :admin_id
+        )
     """)
 
-    if filtros.get("estado"):
-        wh.append("r.estado = :estado"); p["estado"] = filtros["estado"]
-    if filtros.get("desde"):
-        wh.append("r.inicio >= (:desde AT TIME ZONE 'America/Santiago')::timestamptz")
-        p["desde"] = f"{filtros['desde']} 00:00"
-    if filtros.get("hasta"):
-        wh.append("r.fin <= (:hasta AT TIME ZONE 'America/Santiago')::timestamptz")
-        p["hasta"] = f"{filtros['hasta']} 23:59"
-    if filtros.get("id_cancha"):
-        # valida que esa cancha sea del admin (queda implícito por la clausula principal)
-        wh.append("r.id_cancha = :id_cancha"); p["id_cancha"] = filtros["id_cancha"]
-    if filtros.get("id_complejo"):
-        # fuerza que el complejo consultado también sea del admin
-        wh.append("""
-          r.id_cancha IN (
-            SELECT c2.id_cancha
-            FROM canchas c2
-            WHERE c2.id_complejo = :id_complejo
-          )
-        """); p["id_complejo"] = filtros["id_complejo"]
+    # Filtros
+    if filtros.get("id_cancha") is not None:
+        wh.append("r.id_cancha = :id_cancha")
+        p["id_cancha"] = int(filtros["id_cancha"])
 
-    where = " WHERE " + " AND ".join(wh)
-    q = _DEF_SELECT + where + " ORDER BY r.inicio DESC LIMIT 500"
+    if filtros.get("id_complejo") is not None and "id_cancha" not in p:
+        wh.append("""
+            r.id_cancha IN (
+                SELECT c2.id_cancha
+                FROM canchas c2
+                WHERE c2.id_complejo = :id_complejo
+            )
+        """)
+        p["id_complejo"] = int(filtros["id_complejo"])
+
+    if filtros.get("estado"):
+        wh.append("r.estado = :estado")
+        p["estado"] = str(filtros["estado"])
+
+    if filtros.get("desde"):
+        wh.append("(r.inicio AT TIME ZONE 'America/Santiago')::date >= CAST(:desde AS date)")
+        p["desde"] = str(filtros["desde"])
+
+    if filtros.get("hasta"):
+        wh.append("(r.inicio AT TIME ZONE 'America/Santiago')::date <= CAST(:hasta AS date)")
+        p["hasta"] = str(filtros["hasta"])
+
+    q = f"""
+    SELECT
+      r.id_reserva,
+      r.id_usuario,
+      r.id_cancha,
+      (r.inicio AT TIME ZONE 'America/Santiago')::date AS fecha_reserva,
+      to_char(r.inicio AT TIME ZONE 'America/Santiago', 'HH24:MI') AS hora_inicio,
+      to_char(r.fin    AT TIME ZONE 'America/Santiago', 'HH24:MI') AS hora_fin,
+      r.estado::text AS estado,
+      r.precio_total,
+      r.notas
+    FROM reservas r
+    WHERE {" AND ".join(wh)}
+    ORDER BY r.inicio DESC
+    LIMIT 500
+    """
     return [dict(r) for r in db.execute(text(q), p).mappings().all()]
+
 
 def pertenece_a_admin(db, id_reserva: int, admin_id: int) -> bool:
     q = """
@@ -280,3 +297,26 @@ def listar_superadmin(db, filtros: dict):
     where = (" WHERE " + " AND ".join(wh)) if wh else ""
     q = _DEF_SELECT + where + " ORDER BY r.inicio DESC LIMIT 1000"
     return [dict(r) for r in db.execute(text(q), p).mappings().all()]
+
+def pertenece_a_admin(db: Session, id_reserva: int, admin_id: int) -> bool:
+    q = text("""
+        SELECT 1
+        FROM reservas r
+        JOIN canchas c  ON c.id_cancha = r.id_cancha
+        JOIN complejos x ON x.id_complejo = c.id_complejo
+        WHERE r.id_reserva = :id_reserva
+          AND x.id_dueno   = :admin_id
+        LIMIT 1
+    """)
+    return db.execute(q, {"id_reserva": id_reserva, "admin_id": admin_id}).first() is not None
+
+def cancha_pertenece_a_admin(db: Session, id_cancha: int, admin_id: int) -> bool:
+    q = text("""
+        SELECT 1
+        FROM canchas c
+        JOIN complejos x ON x.id_complejo = c.id_complejo
+        WHERE c.id_cancha = :id_cancha
+          AND x.id_dueno  = :admin_id
+        LIMIT 1
+    """)
+    return db.execute(q, {"id_cancha": id_cancha, "admin_id": admin_id}).first() is not None

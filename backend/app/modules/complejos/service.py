@@ -14,8 +14,6 @@ from app.modules.complejos import repository as repo
 def _is_admin(user: Usuario) -> bool:
     return user.rol in ("admin","superadmin")
 
-def _is_owner_or_admin(user: Usuario, owner_id: int) -> bool:
-    return _is_admin(user) or user.id_usuario == owner_id
 
 def list_complejos(db: Session, q: ComplejosQuery) -> ComplejosListOut:
     offset = (q.page - 1) * q.page_size
@@ -31,7 +29,13 @@ def list_complejos(db: Session, q: ComplejosQuery) -> ComplejosListOut:
     return ComplejosListOut(items=items, total=total, page=q.page, page_size=q.page_size)
 
 def create_complejo(db: Session, current: Usuario, data: ComplejoCreateIn) -> ComplejoOut:
-    if current.rol not in ("dueno","admin","superadmin"):
+    """
+    Crear complejo:
+    - superadmin: permitido
+    - admin: permitido (queda como id_dueno del complejo)
+    - usuario normal: prohibido
+    """
+    if current.rol not in ("admin", "superadmin"):
         raise HTTPException(status_code=403, detail="No autorizado para crear complejos")
     try:
         row = repo.insert_complejo(db, current.id_usuario, data.model_dump())
@@ -43,34 +47,59 @@ def create_complejo(db: Session, current: Usuario, data: ComplejoCreateIn) -> Co
     return ComplejoOut(**row)
 
 def get_complejo(db: Session, id_complejo: int, lat: Optional[float], lon: Optional[float]) -> ComplejoOut:
+    """
+    Detalle de complejo (público). Si se envía lat/lon, incluye distancia_km.
+    """
     row = repo.get_complejo_by_id(db, id_complejo, lat=lat, lon=lon)
     if not row:
         raise HTTPException(status_code=404, detail="Complejo no encontrado")
     return ComplejoOut(**row)
 
 def update_complejo(db: Session, current: Usuario, id_complejo: int, data: ComplejoUpdateIn) -> ComplejoOut:
+    """
+    Actualizar complejo:
+    - superadmin: puede actualizar cualquiera
+    - admin: solo si es el propietario (id_dueno) del complejo
+    """
     owner_id = repo.owner_of_complejo(db, id_complejo)
     if not owner_id:
         raise HTTPException(status_code=404, detail="Complejo no encontrado")
-    if not _is_owner_or_admin(current, owner_id):
+
+    if not (
+        (current.rol == "superadmin") or
+        (current.rol == "admin" and current.id_usuario == owner_id)
+    ):
         raise HTTPException(status_code=403, detail="No autorizado")
+
     try:
         row = repo.update_complejo(db, id_complejo, data.model_dump(exclude_none=True))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not row:
         raise HTTPException(status_code=500, detail="No se pudo actualizar el complejo")
+
     reloaded = repo.get_complejo_by_id(db, id_complejo)
     return ComplejoOut(**reloaded)
 
 def delete_complejo(db: Session, current: Usuario, id_complejo: int) -> dict:
+    """
+    Desactivar (soft delete) complejo:
+    - superadmin: puede eliminar cualquiera
+    - admin: solo si es el propietario (id_dueno)
+    """
     owner_id = repo.owner_of_complejo(db, id_complejo)
     if not owner_id:
         raise HTTPException(status_code=404, detail="Complejo no encontrado")
-    if not _is_owner_or_admin(current, owner_id):
+
+    if not (
+        (current.rol == "superadmin") or
+        (current.rol == "admin" and current.id_usuario == owner_id)
+    ):
         raise HTTPException(status_code=403, detail="No autorizado")
+
     repo.soft_delete_complejo(db, id_complejo)
     return {"detail": "Complejo desactivado."}
+
 
 def canchas(db: Session, id_complejo: int):
     return [CanchaOut(**r) for r in repo.list_canchas(db, id_complejo)]
