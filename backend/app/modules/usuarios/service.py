@@ -24,7 +24,7 @@ def _to_public(user: Usuario) -> UsuarioBaseOut:
         email=user.email,
         telefono=user.telefono,
         avatar_url=user.avatar_url,
-        rol="admin" if user.rol == "dueno" else ("super_admin" if user.rol in ("admin","superadmin") else "usuario"),
+        rol="admin" if user.rol in ("admin", "dueno") else ("super_admin" if user.rol == ("superadmin", "super_admin") else "usuario"),
         verificado=getattr(user, "verificado", None),
         esta_activo=getattr(user, "esta_activo", None),
     )
