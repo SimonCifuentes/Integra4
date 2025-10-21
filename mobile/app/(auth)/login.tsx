@@ -11,8 +11,6 @@ import { router } from "expo-router";
 import { useLogin } from "@/src/features/features/auth/hooks";
 import { useAuth } from "@/src/stores/auth";
 
-// 🔒 Desactiva el bypass por completo
-const DEV_BYPASS_AUTH = false;
 
 export default function LoginScreen() {
   // Sugerencia: deja prellenado con un usuario seed real de tu DB si quieres
@@ -189,7 +187,7 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* ❌ Eliminado el botón de bypass DEV */}
+          
         </View>
       </View>
     </KeyboardAvoidingView>
