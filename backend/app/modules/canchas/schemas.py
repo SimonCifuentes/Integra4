@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Optional, Literal, List, Annotated
 from pydantic import BaseModel, Field
 from pydantic import AliasChoices  # <-- para alias 'techada' en Query
+from typing import Optional
 
 # Tipos con restricciones (Pydantic v2)
 Lat = Annotated[float, Field(ge=-90, le=90)]
@@ -81,3 +82,15 @@ class CanchaFotoOut(BaseModel):
     id_cancha: int
     url_foto: str
     orden: int
+
+class AdminCanchasQuery(BaseModel):
+    q: Optional[str] = None
+    id_complejo: Optional[int] = None
+    deporte: Optional[str] = None
+    cubierta: Optional[bool] = None
+    iluminacion: Optional[bool] = None
+    sort_by: Optional[str] = "nombre"   # nombre | precio | rating | recientes
+    order: Optional[str] = "asc"        # asc | desc
+    page: int = 1
+    page_size: int = 20
+    incluir_inactivas: bool = True      # panel: por defecto ver todo

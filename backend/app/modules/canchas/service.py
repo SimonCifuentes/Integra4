@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.canchas.schemas import (
     CanchaCreateIn, CanchaUpdateIn, CanchasQuery, CanchaOut, CanchasListOut,
-    CanchaFotoIn, CanchaFotoOut
+    CanchaFotoIn, CanchaFotoOut, AdminCanchasQuery
 )
 from app.modules.canchas import repository as repo
 from app.modules.auth.model import Usuario
@@ -177,3 +177,41 @@ def delete_foto(db: Session, id_cancha: int, id_foto: int, current: Usuario) -> 
 
     repo.delete_foto_cancha(db, id_cancha, id_foto)
     return {"ok": True}
+
+
+def list_canchas_panel(db: Session, current: Usuario, params: AdminCanchasQuery) -> CanchasListOut:
+    if current.rol not in ("admin", "superadmin"):
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    if current.rol == "superadmin":
+        rows, total = repo.search_canchas_superadmin(
+            db,
+            q=params.q,
+            id_complejo=params.id_complejo,
+            deporte=params.deporte,
+            cubierta=params.cubierta,
+            iluminacion=params.iluminacion,
+            incluir_inactivas=params.incluir_inactivas,
+            sort_by=params.sort_by or "nombre",
+            order=params.order or "asc",
+            offset=(params.page - 1) * params.page_size,
+            limit=params.page_size,
+        )
+    else:
+        rows, total = repo.search_canchas_owner(
+            db,
+            owner_id=current.id_usuario,
+            q=params.q,
+            id_complejo=params.id_complejo,
+            deporte=params.deporte,
+            cubierta=params.cubierta,
+            iluminacion=params.iluminacion,
+            incluir_inactivas=params.incluir_inactivas,
+            sort_by=params.sort_by or "nombre",
+            order=params.order or "asc",
+            offset=(params.page - 1) * params.page_size,
+            limit=params.page_size,
+        )
+
+    items = [CanchaOut(**r) for r in rows]
+    return CanchasListOut(items=items, total=total, page=params.page, page_size=params.page_size)

@@ -320,3 +320,137 @@ def add_foto_cancha(db: Session, id_cancha: int, url_foto: str, orden: Optional[
 def delete_foto_cancha(db: Session, id_cancha: int, id_foto: int) -> None:
     db.execute(text("DELETE FROM fotos_cancha WHERE id_foto = :f AND id_cancha = :c"), {"f": id_foto, "c": id_cancha})
     db.commit()
+
+def search_canchas_superadmin(
+    db: Session,
+    *,
+    q: Optional[str],
+    id_complejo: Optional[int],
+    deporte: Optional[str],
+    cubierta: Optional[bool],
+    iluminacion: Optional[bool],
+    incluir_inactivas: bool,
+    sort_by: str,
+    order: str,
+    offset: int,
+    limit: int,
+) -> Tuple[List[Dict[str, Any]], int]:
+    params: Dict[str, Any] = {
+        "q": f"%{q.lower()}%" if q else None,
+        "id_complejo": id_complejo,
+        "deporte": deporte.lower() if deporte else None,
+        "cubierta": cubierta,
+        "iluminacion": iluminacion,
+        "offset": offset, "limit": limit,
+    }
+
+    base = f"""
+        SELECT
+          ch.id_cancha, ch.id_complejo, ch.nombre,
+          d.nombre AS deporte,
+          ch.cubierta, ch.activo,
+          COALESCE(AVG(rs.puntuacion) FILTER (WHERE rs.esta_activa), NULL) AS rating_promedio,
+          (
+            SELECT MIN(rp.precio_por_hora)
+            FROM reglas_precio rp
+            WHERE rp.id_cancha = ch.id_cancha
+              AND (rp.vigente_desde IS NULL OR rp.vigente_desde <= CURRENT_DATE)
+              AND (rp.vigente_hasta IS NULL OR rp.vigente_hasta >= CURRENT_DATE)
+          ) AS precio_desde
+        FROM canchas ch
+        JOIN deportes d   ON d.id_deporte = ch.id_deporte
+        JOIN complejos c  ON c.id_complejo = ch.id_complejo
+        LEFT JOIN resenas rs ON rs.id_cancha = ch.id_cancha
+        WHERE c.activo = TRUE
+        {"" if incluir_inactivas else "AND ch.activo = TRUE"}
+    """
+
+    wh = []
+    if q: wh.append("lower(ch.nombre) LIKE :q")
+    if id_complejo is not None: wh.append("ch.id_complejo = :id_complejo")
+    if deporte: wh.append("lower(d.nombre) = :deporte")
+    if cubierta is not None: wh.append("ch.cubierta = :cubierta")
+    if iluminacion is not None: wh.append("ch.iluminacion = :iluminacion")
+
+    if wh: base += " AND " + " AND ".join(wh)
+    base += " GROUP BY ch.id_cancha, ch.id_complejo, ch.nombre, d.nombre, ch.cubierta, ch.activo"
+
+    ordermap = {"precio":"precio_desde NULLS LAST","rating":"rating_promedio NULLS LAST","nombre":"nombre","recientes":"id_cancha DESC"}
+    ob = ordermap.get(sort_by, "nombre")
+    direction = "ASC" if (order or "").lower() == "asc" else "DESC"
+
+    count_sql = f"SELECT count(*) FROM ({base}) t"
+    total = db.execute(text(count_sql), params).scalar_one()
+
+    sql = f"{base} ORDER BY {ob} {direction} LIMIT :limit OFFSET :offset"
+    rows = db.execute(text(sql), params).mappings().all()
+    return [dict(r) for r in rows], int(total)
+
+
+def search_canchas_owner(
+    db: Session,
+    *,
+    owner_id: int,
+    q: Optional[str],
+    id_complejo: Optional[int],
+    deporte: Optional[str],
+    cubierta: Optional[bool],
+    iluminacion: Optional[bool],
+    incluir_inactivas: bool,
+    sort_by: str,
+    order: str,
+    offset: int,
+    limit: int,
+) -> Tuple[List[Dict[str, Any]], int]:
+    params: Dict[str, Any] = {
+        "owner_id": owner_id,
+        "q": f"%{q.lower()}%" if q else None,
+        "id_complejo": id_complejo,
+        "deporte": deporte.lower() if deporte else None,
+        "cubierta": cubierta,
+        "iluminacion": iluminacion,
+        "offset": offset, "limit": limit,
+    }
+
+    base = f"""
+        SELECT
+          ch.id_cancha, ch.id_complejo, ch.nombre,
+          d.nombre AS deporte,
+          ch.cubierta, ch.activo,
+          COALESCE(AVG(rs.puntuacion) FILTER (WHERE rs.esta_activa), NULL) AS rating_promedio,
+          (
+            SELECT MIN(rp.precio_por_hora)
+            FROM reglas_precio rp
+            WHERE rp.id_cancha = ch.id_cancha
+              AND (rp.vigente_desde IS NULL OR rp.vigente_desde <= CURRENT_DATE)
+              AND (rp.vigente_hasta IS NULL OR rp.vigente_hasta >= CURRENT_DATE)
+          ) AS precio_desde
+        FROM canchas ch
+        JOIN deportes d   ON d.id_deporte = ch.id_deporte
+        JOIN complejos c  ON c.id_complejo = ch.id_complejo
+        LEFT JOIN resenas rs ON rs.id_cancha = ch.id_cancha
+        WHERE c.activo = TRUE
+          AND c.id_dueno = :owner_id
+        {"" if incluir_inactivas else "AND ch.activo = TRUE"}
+    """
+
+    wh = []
+    if q: wh.append("lower(ch.nombre) LIKE :q")
+    if id_complejo is not None: wh.append("ch.id_complejo = :id_complejo")
+    if deporte: wh.append("lower(d.nombre) = :deporte")
+    if cubierta is not None: wh.append("ch.cubierta = :cubierta")
+    if iluminacion is not None: wh.append("ch.iluminacion = :iluminacion")
+
+    if wh: base += " AND " + " AND ".join(wh)
+    base += " GROUP BY ch.id_cancha, ch.id_complejo, ch.nombre, d.nombre, ch.cubierta, ch.activo"
+
+    ordermap = {"precio":"precio_desde NULLS LAST","rating":"rating_promedio NULLS LAST","nombre":"nombre","recientes":"id_cancha DESC"}
+    ob = ordermap.get(sort_by, "nombre")
+    direction = "ASC" if (order or "").lower() == "asc" else "DESC"
+
+    count_sql = f"SELECT count(*) FROM ({base}) t"
+    total = db.execute(text(count_sql), params).scalar_one()
+
+    sql = f"{base} ORDER BY {ob} {direction} LIMIT :limit OFFSET :offset"
+    rows = db.execute(text(sql), params).mappings().all()
+    return [dict(r) for r in rows], int(total)
