@@ -22,6 +22,7 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:8081",
     "http://localhost:19006",  # (por si usas el viejo dev server web)
     "http://127.0.0.1:19006",
+    "http://api-h1d7oi-a881cc-168-232-167-73.traefik.me"
     # agrega otros que veas en consola si cambia el puerto
 ]
 

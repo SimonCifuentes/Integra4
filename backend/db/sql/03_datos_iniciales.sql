@@ -108,12 +108,13 @@ SELECT 1;
 -- -------------------------------------------------------------
 -- Cancha de prueba + fotos
 -- -------------------------------------------------------------
+-- Cancha 1 Ñielol (ya existente)
 WITH ids AS (
   SELECT
     (SELECT id_complejo FROM complejos WHERE nombre='Complejo Ñielol' LIMIT 1) AS id_complejo,
     (SELECT id_deporte FROM deportes WHERE nombre='futbolito' LIMIT 1)         AS id_deporte
-)
-, c AS (
+),
+c AS (
   INSERT INTO canchas (id_complejo, nombre, id_deporte, cubierta, activo)
   SELECT id_complejo, 'Cancha 1 Ñielol', id_deporte, FALSE, TRUE FROM ids
   RETURNING id_cancha
@@ -123,9 +124,66 @@ fcan AS (
   VALUES
     ((SELECT id_cancha FROM c), 'https://picsum.photos/id/1041/1200/800', 1)
   ON CONFLICT DO NOTHING
-  RETURNING id_foto
 )
 SELECT 1;
+
+-- Cancha 2 Ñielol
+WITH ids AS (
+  SELECT
+    (SELECT id_complejo FROM complejos WHERE nombre='Complejo Ñielol' LIMIT 1) AS id_complejo,
+    (SELECT id_deporte FROM deportes WHERE nombre='futbolito' LIMIT 1)         AS id_deporte
+),
+c AS (
+  INSERT INTO canchas (id_complejo, nombre, id_deporte, cubierta, activo)
+  SELECT id_complejo, 'Cancha 2 Ñielol', id_deporte, FALSE, TRUE FROM ids
+  RETURNING id_cancha
+),
+fcan AS (
+  INSERT INTO fotos_cancha (id_cancha, url_foto, orden)
+  VALUES
+    ((SELECT id_cancha FROM c), 'https://picsum.photos/id/1042/1200/800', 1)
+  ON CONFLICT DO NOTHING
+)
+SELECT 1;
+
+-- Cancha 3 Ñielol
+WITH ids AS (
+  SELECT
+    (SELECT id_complejo FROM complejos WHERE nombre='Complejo Ñielol' LIMIT 1) AS id_complejo,
+    (SELECT id_deporte FROM deportes WHERE nombre='futbolito' LIMIT 1)         AS id_deporte
+),
+c AS (
+  INSERT INTO canchas (id_complejo, nombre, id_deporte, cubierta, activo)
+  SELECT id_complejo, 'Cancha 3 Ñielol', id_deporte, TRUE, TRUE FROM ids
+  RETURNING id_cancha
+),
+fcan AS (
+  INSERT INTO fotos_cancha (id_cancha, url_foto, orden)
+  VALUES
+    ((SELECT id_cancha FROM c), 'https://picsum.photos/id/1043/1200/800', 1)
+  ON CONFLICT DO NOTHING
+)
+SELECT 1;
+
+-- Cancha 1 Amanecer (otro complejo)
+WITH ids AS (
+  SELECT
+    (SELECT id_complejo FROM complejos WHERE nombre='Complejo Amanecer' LIMIT 1) AS id_complejo,
+    (SELECT id_deporte FROM deportes WHERE nombre='futbolito' LIMIT 1)           AS id_deporte
+),
+c AS (
+  INSERT INTO canchas (id_complejo, nombre, id_deporte, cubierta, activo)
+  SELECT id_complejo, 'Cancha 1 Amanecer', id_deporte, FALSE, TRUE FROM ids
+  RETURNING id_cancha
+),
+fcan AS (
+  INSERT INTO fotos_cancha (id_cancha, url_foto, orden)
+  VALUES
+    ((SELECT id_cancha FROM c), 'https://picsum.photos/id/1050/1200/800', 1)
+  ON CONFLICT DO NOTHING
+)
+SELECT 1;
+
 
 -- -------------------------------------------------------------
 -- Horario general del complejo (todos los días 08:00-23:00)

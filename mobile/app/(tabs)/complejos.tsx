@@ -160,9 +160,27 @@ export default function ComplejosScreen() {
                 </View>
               </View>
               <View style={styles.cardActions}>
-                <OutlineBtn text="Ver complejo" onPress={() => router.push(`/(tabs)/canchas`)} />
-                <PrimaryBtn text="Reservar" onPress={() => router.push(`/(tabs)/complejos[id]`)} />
-              </View>
+  <PrimaryBtn
+    text="Ver canchas"
+    onPress={() => {
+      const complejoId = c.id ?? c.id_complejo;
+      if (!complejoId) {
+        console.warn("No se encontró ID del complejo", c);
+        return;
+      }
+
+      router.push({
+        pathname: "/(cancha)/canchas-por-complejo", // 👈 usa este si el archivo está dentro de (tabs)
+        // si el archivo está fuera, cambia a: pathname: "/canchas-por-complejo"
+        params: {
+          complejoId: String(complejoId),
+          nombre: String(c.nombre ?? c.nombre_complejo ?? ""),
+        },
+      });
+    }}
+  />
+</View>
+
             </View>
           ))}
           {complejos.length === 0 && (

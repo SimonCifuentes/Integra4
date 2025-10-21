@@ -213,9 +213,21 @@ export default function CanchasScreen() {
         )}
       </View>
       <View style={styles.cardActions}>
-        <OutlineBtn text="Ver complejo" onPress={() => router.push(`/(tabs)/complejos/${item.id_complejo}`)} />
-        <PrimaryBtn text="Reservar" onPress={() => openReserva(item)} />
-      </View>
+  {/* Ver cancha (detalle individual) */}
+  
+
+  {/* Reservar (manda id de cancha a la pantalla de reservar) */}
+  <PrimaryBtn
+    text="Reservar"
+    onPress={() =>
+      router.push({
+        pathname: "/(reservar)/reservar",
+        params: { canchaId: String(item.id_cancha) },
+      })
+    }
+  />
+</View>
+
     </View>
   );
 

@@ -1,4 +1,4 @@
-﻿﻿// app/(tabs)/reservas.tsx
+// app/(tabs)/mis-reservas.tsx
 import React from "react";
 import {
   View,
@@ -9,71 +9,129 @@ import {
   RefreshControl,
   StyleSheet,
   Platform,
+  Alert,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getItemAsync } from "expo-secure-store";
 
-type Reserva = {
+const API_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  "http://api-h1d7oi-a881cc-168-232-167-73.traefik.me/api/v1";
+const TEAL = "#0ea5a4";
+
+/* ===== Tipos UI ===== */
+export type Reserva = {
   id: string;
   status: "CONFIRMED" | "PENDING" | "CANCELLED" | "EXPIRED" | string;
-  date?: string;            // YYYY-MM-DD
-  startTime?: string;       // HH:mm
-  endTime?: string;         // HH:mm
-  totalPrice?: number;
+  date?: string;       // fecha_reserva
+  startTime?: string;  // hora_inicio
+  endTime?: string;    // hora_fin
+  totalPrice?: number; // precio_total
   cancha?: { id: string; name?: string | number };
   venue?: { id: string; name: string; address?: string };
 };
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000/api/v1";
-const TEAL = "#0ea5a4";
-
-/* --- ✅ FIX: getToken multiplataforma (funciona en web y móvil) --- */
+/* ===== Auth token ===== */
 async function getToken() {
   try {
-    if (Platform.OS === "web") {
-      if (typeof window !== "undefined") {
-        return window.localStorage.getItem("accessToken");
-      }
-      return null;
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      return (
+        window.localStorage.getItem("token") ||
+        window.localStorage.getItem("accessToken") ||
+        window.localStorage.getItem("jwt") ||
+        window.localStorage.getItem("access_token")
+      );
     }
-    return await getItemAsync("accessToken");
-  } catch (err) {
-    console.warn("Error obteniendo token:", err);
-    if (typeof window !== "undefined") {
-      return window.localStorage.getItem("accessToken");
-    }
+    return (
+      (await getItemAsync("token")) ||
+      (await getItemAsync("accessToken")) ||
+      (await getItemAsync("jwt")) ||
+      (await getItemAsync("access_token"))
+    );
+  } catch {
     return null;
   }
 }
 
-/* --- Fetch de reservas propias --- */
-async function fetchMisReservas(): Promise<Reserva[]> {
+/* ===== API helpers ===== */
+async function apiGet<T>(path: string): Promise<T> {
   const token = await getToken();
-  const res = await fetch(`${API_URL}/reservas/mias`, {
+  const res = await fetch(`${API_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`Error ${res.status}: ${txt || "No se pudieron cargar tus reservas"}`);
-  }
-  const data = await res.json();
-  return Array.isArray(data) ? data : data?.data ?? [];
+  const txt = await res.text();
+  if (!res.ok) throw new Error(txt || `HTTP ${res.status}`);
+  return txt ? JSON.parse(txt) : ({} as T);
 }
 
-/* --- Componente Pill de estado --- */
+/* ===== Endpoints ===== */
+async function fetchMisReservas(): Promise<Reserva[]> {
+  const raw = await apiGet<any>("/reservas/mias");
+  const list: any[] = Array.isArray(raw) ? raw : raw?.data ?? raw?.items ?? [];
+
+  return list.map((r) => {
+    const id = r.id ?? r.id_reserva ?? r.reserva_id;
+    const estado = r.estado ?? r.status ?? "CONFIRMED";
+    const fecha = r.fecha_reserva ?? r.fecha;
+    const inicio = r.hora_inicio ?? r.inicio;
+    const fin = r.hora_fin ?? r.fin;
+
+    const canchaId =
+      r?.cancha?.id ?? r.cancha_id ?? r.id_cancha ?? r?.cancha?.uuid ?? "";
+    const canchaNombre =
+      r?.cancha?.nombre ?? r.cancha_nombre ?? r.cancha ?? canchaId ?? "";
+    const complejoId =
+      r?.complejo?.id ?? r.complejo_id ?? r?.venue?.id ?? r.id_complejo ?? "";
+    const complejoNombre =
+      r?.complejo?.nombre ??
+      r.complejo_nombre ??
+      r?.venue?.name ??
+      r.complejo ??
+      "Complejo";
+    const complejoDireccion =
+      r?.complejo?.direccion ?? r?.venue?.address ?? r.direccion ?? undefined;
+
+    const total =
+      typeof r.monto_total === "number"
+        ? r.monto_total
+        : typeof r.precio_total === "number"
+        ? r.precio_total
+        : undefined;
+
+    return {
+      id: String(id),
+      status: String(estado),
+      date: fecha,
+      startTime: inicio,
+      endTime: fin,
+      totalPrice: total,
+      cancha: { id: String(canchaId || ""), name: canchaNombre },
+      venue: {
+        id: String(complejoId || ""),
+        name: complejoNombre,
+        address: complejoDireccion,
+      },
+    } as Reserva;
+  });
+}
+
+/* ===== UI helpers ===== */
 function EstadoPill({ estado }: { estado: Reserva["status"] }) {
   const key = (estado ?? "").toString().toLowerCase();
   const map: Record<string, { bg: string; fg: string; label: string }> = {
     confirmed: { bg: "#dcfce7", fg: "#166534", label: "Confirmada" },
+    pendiente: { bg: "#fef9c3", fg: "#713f12", label: "Pendiente" },
     pending: { bg: "#fef9c3", fg: "#713f12", label: "Pendiente" },
     cancelled: { bg: "#fee2e2", fg: "#991b1b", label: "Cancelada" },
     expired: { bg: "#e5e7eb", fg: "#374151", label: "Vencida" },
   };
-  const sty = map[key] ?? { bg: "#e5e7eb", fg: "#374151", label: estado?.toString() || "—" };
+  const sty =
+    map[key] ??
+    { bg: "#e5e7eb", fg: "#374151", label: estado?.toString() || "—" };
   return (
     <View
       style={{
@@ -88,7 +146,6 @@ function EstadoPill({ estado }: { estado: Reserva["status"] }) {
   );
 }
 
-/* --- Formateador de CLP --- */
 function CLP({ value }: { value?: number }) {
   if (typeof value !== "number") return null;
   return (
@@ -102,8 +159,14 @@ function CLP({ value }: { value?: number }) {
   );
 }
 
-/* --- Tarjeta individual de reserva --- */
-function ItemReserva({ r, onPress }: { r: Reserva; onPress?: () => void }) {
+/* ===== Item ===== */
+function ReservaItem({
+  r,
+  onPressDetalle,
+}: {
+  r: Reserva;
+  onPressDetalle: () => void;
+}) {
   const titulo = `${r.venue?.name ?? "Complejo"}${
     r.cancha?.name ? ` • Cancha ${r.cancha.name}` : ""
   }`;
@@ -111,7 +174,7 @@ function ItemReserva({ r, onPress }: { r: Reserva; onPress?: () => void }) {
   const horario = [r.startTime, r.endTime].filter(Boolean).join(" - ") || "—";
 
   return (
-    <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={styles.card}>
+    <View style={styles.card}>
       <View
         style={{
           flexDirection: "row",
@@ -121,7 +184,12 @@ function ItemReserva({ r, onPress }: { r: Reserva; onPress?: () => void }) {
         }}
       >
         <Text
-          style={{ fontSize: 16, fontWeight: "900", color: "#0f172a" }}
+          style={{
+            fontSize: 16,
+            fontWeight: "900",
+            color: "#0f172a",
+            flex: 1,
+          }}
           numberOfLines={1}
         >
           {titulo}
@@ -142,12 +210,19 @@ function ItemReserva({ r, onPress }: { r: Reserva; onPress?: () => void }) {
           <CLP value={r.totalPrice} />
         </View>
       ) : null}
-    </TouchableOpacity>
+
+      <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+        <TouchableOpacity style={styles.btnOutline} onPress={onPressDetalle}>
+          <Ionicons name="eye-outline" size={16} color={TEAL} />
+          <Text style={styles.btnOutlineText}>Ver detalle</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
-/* --- Pantalla principal --- */
-export default function ReservasTab() {
+/* ===== Pantalla ===== */
+export default function MisReservasScreen() {
   const router = useRouter();
   const [data, setData] = React.useState<Reserva[] | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -183,40 +258,14 @@ export default function ReservasTab() {
   useFocusEffect(React.useCallback(() => { onRefresh(); }, [onRefresh]));
   React.useEffect(() => { load(); }, [load]);
 
-  const preview = (data ?? []).slice(0, 3);
-
   return (
     <View style={{ flex: 1 }}>
-      {/* Header */}
+      {/* Header con botón de volver */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Reservas</Text>
-      </View>
-
-      {/* Acciones */}
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={styles.btnPrimary}
-          onPress={() => router.push("/(tabs)/mis-reservas")}
-        >
-          <Ionicons name="reader-outline" size={16} color="#fff" />
-          <Text style={styles.btnPrimaryText}>Mis reservas</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ padding: 4, marginRight: 8 }}>
+          <Ionicons name="chevron-back" size={24} color="#0f172a" />
         </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.btnOutline}
-          onPress={() => {
-            // Cambia esto por tu flujo real de reserva
-            router.push("/(tabs)/mis-reservas");
-          }}
-        >
-          <Ionicons name="add-circle-outline" size={16} color={TEAL} />
-          <Text style={styles.btnOutlineText}>Reservar</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Listado */}
-      <View style={{ paddingHorizontal: 16, marginTop: 6 }}>
-        <Text style={{ fontWeight: "900", color: "#0f172a" }}>Próximas reservas</Text>
+        <Text style={styles.headerTitle}>Mis reservas</Text>
       </View>
 
       {loading && !data ? (
@@ -226,55 +275,32 @@ export default function ReservasTab() {
         </View>
       ) : error && (!data || data.length === 0) ? (
         <View style={[styles.center, { paddingHorizontal: 24 }]}>
-          <Text
-            style={{
-              fontSize: 16,
-              fontWeight: "900",
-              textAlign: "center",
-              marginBottom: 6,
-            }}
-          >
+          <Text style={{ fontSize: 16, fontWeight: "900", textAlign: "center", marginBottom: 6 }}>
             No se pudieron cargar tus reservas
           </Text>
-          <Text style={{ textAlign: "center", color: "#6b7280", marginBottom: 12 }}>
-            {error}
-          </Text>
-          <TouchableOpacity onPress={load} style={styles.btnPrimary}>
-            <Ionicons name="refresh" size={16} color="#fff" />
-            <Text style={styles.btnPrimaryText}>Reintentar</Text>
-          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
-          data={preview}
+          data={data ?? []}
           keyExtractor={(r) => r.id}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           contentContainerStyle={{ paddingVertical: 8, paddingBottom: 16 }}
           ListEmptyComponent={
             <View style={{ padding: 24 }}>
-              <Text
-                style={{
-                  textAlign: "center",
-                  fontWeight: "900",
-                  fontSize: 16,
-                  marginBottom: 6,
-                }}
-              >
+              <Text style={{ textAlign: "center", fontWeight: "900", fontSize: 16, marginBottom: 6 }}>
                 Sin reservas
               </Text>
               <Text style={{ textAlign: "center", color: "#6b7280" }}>
-                Aún no tienes reservas confirmadas. Crea una desde una cancha.
+                Aún no tienes reservas. Crea una desde una cancha.
               </Text>
             </View>
           }
           renderItem={({ item }) => (
-            <ItemReserva
+            <ReservaItem
               r={item}
-              onPress={() =>
+              onPressDetalle={() =>
                 router.push({
-                  pathname: "/(tabs)/reservadetalle",
+                  pathname: "/(reservar)/reservadetalle",
                   params: {
                     id: item.id,
                     cancha: item.cancha?.name?.toString() ?? "",
@@ -287,28 +313,17 @@ export default function ReservasTab() {
               }
             />
           )}
-          ListFooterComponent={
-            (data ?? []).length > 3 ? (
-              <View style={{ paddingHorizontal: 16, marginTop: 8 }}>
-                <TouchableOpacity
-                  style={[styles.btnOutline, { height: 44 }]}
-                  onPress={() => router.push("/(tabs)/mis-reservas")}
-                >
-                  <Ionicons name="list-outline" size={16} color={TEAL} />
-                  <Text style={styles.btnOutlineText}>Ver todas</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null
-          }
         />
       )}
     </View>
   );
 }
 
-/* --- Estilos --- */
+/* ===== Estilos ===== */
 const styles = StyleSheet.create({
   header: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 8,
@@ -317,40 +332,6 @@ const styles = StyleSheet.create({
     borderBottomColor: "#e5e7eb",
   },
   headerTitle: { fontSize: 20, fontWeight: "900", color: "#0f172a" },
-
-  actions: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    flexDirection: "row",
-    gap: 10,
-  },
-  btnPrimary: {
-    backgroundColor: TEAL,
-    height: 44,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
-    flex: 1,
-  },
-  btnPrimaryText: { color: "#fff", fontWeight: "800" },
-
-  btnOutline: {
-    backgroundColor: "#ecfeff",
-    borderWidth: 1,
-    borderColor: "#99f6e4",
-    height: 44,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
-    flex: 1,
-  },
-  btnOutlineText: { color: TEAL, fontWeight: "800" },
 
   card: {
     marginHorizontal: 16,
@@ -362,6 +343,21 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   rowText: { color: "#334155", fontSize: 14 },
+
+  btnOutline: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#99f6e4",
+    backgroundColor: "#ecfeff",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  btnOutlineText: { color: TEAL, fontWeight: "800" },
+
   center: { justifyContent: "center", alignItems: "center", paddingVertical: 24 },
   centerMsg: { marginTop: 8, color: "#6b7280" },
 });

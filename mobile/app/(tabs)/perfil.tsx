@@ -2,30 +2,90 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, ActivityIndicator, Modal, Animated, Easing
+  ScrollView, Alert, ActivityIndicator, Modal, Animated, Easing, Platform
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import * as SecureStore from "expo-secure-store";
 import { useAuth, type Usuario } from "@/src/stores/auth";
 import { AuthAPI } from "@/src/features/features/auth/api";
 
-// ------- Tipos (mock solo para reservas/grupos visual) -------
-type Reserva = { id:number; cancha:string; fecha:string; estado:"confirmada"|"pendiente"|"cancelada" };
-type Grupo   = { id:number; nombre:string; rol:"miembro"|"admin" };
+/* ========= Config API ========= */
+const API_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  "http://api-h1d7oi-a881cc-168-232-167-73.traefik.me/api/v1";
 
-// ------- Datos mock (quítalos cuando conectes tus endpoints reales) -------
-const MOCK_RESERVAS: Reserva[] = [
-  { id:1, cancha:"Cancha 1 - Temuco",   fecha:"Dom 18:00, 22 Sep", estado:"confirmada" },
-  { id:2, cancha:"Cancha 2 - Labranza", fecha:"Mié 21:00, 25 Sep", estado:"pendiente"  },
-];
+/* ========= Tipos ========= */
+type ReservaUI = {
+  id: string;
+  status: string;
+  date?: string;       // YYYY-MM-DD
+  startTime?: string;  // HH:mm
+  endTime?: string;    // HH:mm
+  cancha?: { id: string; name?: string | number };
+  venue?: { id: string; name: string; address?: string };
+  notas?: string | null;
+};
 
-const MOCK_GRUPOS: Grupo[] = [
-  { id:1, nombre:"Equipo Los Andes", rol:"miembro" },
-  { id:2, nombre:"Pádel Temuco",    rol:"admin"   },
-];
+/* ========= Auth helpers ========= */
+async function getToken() {
+  try {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      return window.localStorage.getItem("token") || window.localStorage.getItem("accessToken");
+    }
+    return (await SecureStore.getItemAsync("token")) || (await SecureStore.getItemAsync("accessToken"));
+  } catch {
+    return null;
+  }
+}
 
-// ------- Helpers de Rol -------
+async function apiGet<T>(path: string): Promise<T> {
+  const token = await getToken();
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  const txt = await res.text();
+  if (!res.ok) throw new Error(txt || `HTTP ${res.status}`);
+  return txt ? JSON.parse(txt) : ({} as T);
+}
+
+/* ========= Reservas: fetch + normalización ========= */
+async function fetchMisReservas(): Promise<ReservaUI[]> {
+  const raw = await apiGet<any>("/reservas/mias");
+  const list: any[] = Array.isArray(raw) ? raw : raw?.data ?? raw?.items ?? [];
+
+  return list.map((r) => {
+    const id = r.id ?? r.id_reserva ?? r.reserva_id;
+    const estado = r.estado ?? r.status ?? "CONFIRMED";
+    const fecha = r.fecha ?? r.fecha_reserva;
+    const inicio = r.inicio ?? r.hora_inicio;
+    const fin = r.fin ?? r.hora_fin;
+
+    const canchaId = r?.cancha?.id ?? r.cancha_id ?? r.id_cancha ?? "";
+    const canchaNombre = r?.cancha?.nombre ?? r.cancha_nombre ?? r.cancha ?? canchaId ?? "";
+
+    const complejoId = r?.complejo?.id ?? r.complejo_id ?? r?.venue?.id ?? "";
+    const complejoNombre = r?.complejo?.nombre ?? r.complejo_nombre ?? r?.venue?.name ?? "Complejo";
+    const complejoDireccion = r?.complejo?.direccion ?? r?.venue?.address ?? undefined;
+
+    return {
+      id: String(id),
+      status: String(estado),
+      date: fecha,
+      startTime: inicio,
+      endTime: fin,
+      cancha: { id: String(canchaId || ""), name: canchaNombre },
+      venue: { id: String(complejoId || ""), name: complejoNombre, address: complejoDireccion },
+      notas: r.notas ?? null,
+    } as ReservaUI;
+  });
+}
+
+/* ========= Helpers de Rol ========= */
 function getRoleLabel(rol?: string) {
   const r = (rol || "").toLowerCase();
   if (r === "superadmin") return "Superadmin";
@@ -34,15 +94,13 @@ function getRoleLabel(rol?: string) {
   if (r === "admin_grupos" || r === "admin:grupos" || r === "groups_admin") return "Admin de grupos";
   return "Usuario";
 }
-
 function getRoleColors(rol?: string) {
   const r = (rol || "").toLowerCase();
-  if (r === "superadmin") return { bg: "#ffe4e6", fg: "#9f1239" }; // rosa/rojo
+  if (r === "superadmin") return { bg: "#ffe4e6", fg: "#9f1239" };
   if (r.startsWith("admin") || r === "admin") return { bg: "#fee2e2", fg: "#991b1b" };
   if (r === "owner" || r === "dueño" || r === "dueno") return { bg: "#dbeafe", fg: "#1e40af" };
-  return { bg: "#dcfce7", fg: "#166534" }; // usuario
+  return { bg: "#dcfce7", fg: "#166534" };
 }
-
 function RoleBadge({ rol }: { rol?: string }) {
   const label = getRoleLabel(rol);
   const { bg, fg } = getRoleColors(rol);
@@ -53,10 +111,11 @@ function RoleBadge({ rol }: { rol?: string }) {
   );
 }
 
+/* ========= Componente ========= */
 export default function PerfilScreen() {
   const { user, setUser, logout } = useAuth();
 
-  // ---------- Carga de perfil desde la API al montar ----------
+  /* --- Me --- */
   const [loadingMe, setLoadingMe] = useState(true);
   const [errorMe, setErrorMe] = useState<string | null>(null);
 
@@ -66,7 +125,7 @@ export default function PerfilScreen() {
         setLoadingMe(true);
         setErrorMe(null);
         const me = await AuthAPI.me();
-        await setUser(me); // 👈 actualiza SOLO el usuario, no el token
+        await setUser(me);
       } catch (e: any) {
         setErrorMe(e?.response?.data?.detail ?? "No se pudo cargar tu perfil.");
       } finally {
@@ -75,7 +134,7 @@ export default function PerfilScreen() {
     })();
   }, [setUser]);
 
-  // ---------- Estado local editable (SIN rol) ----------
+  /* --- Form usuario --- */
   type FormUsuario = Omit<Usuario, "rol">;
   const [form, setForm] = useState<FormUsuario>(() => ({
     id_usuario:  user?.id_usuario ?? 0,
@@ -85,8 +144,6 @@ export default function PerfilScreen() {
     telefono:    (user?.telefono as any) ?? "",
     avatar_url:  user?.avatar_url ?? null,
   }));
-
-  // Sync form cuando cambie el user de store
   useEffect(() => {
     if (user) {
       setForm({
@@ -99,14 +156,11 @@ export default function PerfilScreen() {
       });
     }
   }, [user]);
-
   const onChange = (k: keyof FormUsuario, v: string | null) =>
     setForm(prev => ({ ...prev, [k]: v as any }));
 
-  // ---------- Confirmación ----------
+  /* --- Confirmación guardar --- */
   const [confirmOpen, setConfirmOpen] = useState(false);
-
-  // Calcula cambios vs. user actual
   const cambios = useMemo(() => {
     if (!user) return [];
     const diffs: { label: string; from?: string | null; to?: string | null }[] = [];
@@ -119,19 +173,14 @@ export default function PerfilScreen() {
     push("Apellido", user.apellido, form.apellido);
     push("Correo",   user.email,    form.email);
     push("Teléfono", user.telefono, form.telefono);
-    // push("Avatar",   user.avatar_url, form.avatar_url);
     return diffs;
   }, [user, form]);
-
   const openConfirm = () => {
-    if (!cambios.length) {
-      Alert.alert("Perfil", "No hay cambios para guardar");
-      return;
-    }
+    if (!cambios.length) { Alert.alert("Perfil", "No hay cambios para guardar"); return; }
     setConfirmOpen(true);
   };
 
-  // ---------- Animación de éxito ----------
+  /* --- Guardar perfil --- */
   const successAnim = useRef(new Animated.Value(0)).current;
   const showSuccess = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -150,15 +199,12 @@ export default function PerfilScreen() {
       translateY: successAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] })
     }]
   };
-
-  // ---------- Guardado real ----------
   const [saving, setSaving] = useState(false);
   const confirmAndSave = async () => {
     try {
       setConfirmOpen(false);
       Haptics.selectionAsync();
       setSaving(true);
-
       const payload = {
         nombre:     form.nombre,
         apellido:   form.apellido,
@@ -166,26 +212,39 @@ export default function PerfilScreen() {
         email:      form.email,
         avatar_url: form.avatar_url ?? null,
       };
-
       const updated = await AuthAPI.updateMe(payload);
-      const nextUser = updated && typeof updated === "object"
-        ? { ...user!, ...updated }   // conserva rol si API no lo trae
-        : { ...user!, ...payload };
-
+      const nextUser = updated && typeof updated === "object" ? { ...user!, ...updated } : { ...user!, ...payload };
       await setUser(nextUser);
       showSuccess();
     } catch (e: any) {
-      const msg =
-        e?.response?.data?.detail ||
-        e?.response?.data?.message ||
-        "No se pudieron guardar los cambios";
+      const msg = e?.response?.data?.detail || e?.response?.data?.message || "No se pudieron guardar los cambios";
       Alert.alert("Error", msg);
     } finally {
       setSaving(false);
     }
   };
 
-  // Lee rol robusto desde el store: rol (es) o role (en)
+  /* --- Mis reservas (reales) --- */
+  const [resLoading, setResLoading] = useState(true);
+  const [resError, setResError] = useState<string | null>(null);
+  const [reservas, setReservas] = useState<ReservaUI[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setResLoading(true);
+        setResError(null);
+        const items = await fetchMisReservas();
+        setReservas(items);
+      } catch (e: any) {
+        setResError(e?.message || "No se pudieron cargar tus reservas.");
+        setReservas([]);
+      } finally {
+        setResLoading(false);
+      }
+    })();
+  }, []);
+
   const rawRole = (user as any)?.rol ?? (user as any)?.role;
   const roleLabel = useMemo(() => getRoleLabel(rawRole), [rawRole]);
 
@@ -210,7 +269,7 @@ export default function PerfilScreen() {
   return (
     <View style={{ flex:1, backgroundColor:"#fff" }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 64 }}>
-        {/* Header integrado */}
+        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} hitSlop={{ top:10, bottom:10, left:10, right:10 }}>
             <Ionicons name="chevron-back" size={26} />
@@ -219,7 +278,7 @@ export default function PerfilScreen() {
           <View style={{ width:26 }} />
         </View>
 
-        {/* Sección: Rol */}
+        {/* Rol */}
         <Section title="Rol">
           <View style={{ flexDirection:"row", alignItems:"center", justifyContent:"space-between" }}>
             <View>
@@ -233,51 +292,43 @@ export default function PerfilScreen() {
           </Text>
         </Section>
 
-        {/* Formulario de usuario */}
+        {/* Datos personales */}
         <Section title="Datos personales">
           <Field label="Nombre"   value={form.nombre}   onChangeText={(v)=>onChange("nombre", v)} />
           <Field label="Apellido" value={form.apellido} onChangeText={(v)=>onChange("apellido", v)} />
           <Field label="Correo"   value={form.email ?? ""} keyboardType="email-address" autoCapitalize="none" onChangeText={(v)=>onChange("email", v)} />
           <Field label="Teléfono" value={(form.telefono ?? "") as string} keyboardType="phone-pad" onChangeText={(v)=>onChange("telefono", v)} />
-
-          <TouchableOpacity
-            onPress={openConfirm}
-            disabled={saving}
-            style={[styles.btn, styles.btnPrimary, saving && { opacity: 0.6 }]}
-          >
+          <TouchableOpacity onPress={openConfirm} disabled={saving} style={[styles.btn, styles.btnPrimary, saving && { opacity: 0.6 }]}>
             {saving ? <ActivityIndicator /> : <Text style={styles.btnText}>Guardar cambios</Text>}
           </TouchableOpacity>
         </Section>
 
-        {/* Reservas del usuario (mock visual) */}
+        {/* Mis reservas (reales) */}
         <Section title="Mis reservas">
-          {MOCK_RESERVAS.map(r => (
-            <View key={r.id} style={styles.itemRow}>
-              <View>
-                <Text style={styles.itemTitle}>{r.cancha}</Text>
-                <Text style={styles.itemSub}>{r.fecha}</Text>
-              </View>
-              <ReservaBadge text={r.estado} />
-            </View>
-          ))}
+          {resLoading ? (
+            <ActivityIndicator />
+          ) : resError ? (
+            <Text style={{ color:"#b91c1c" }}>{resError}</Text>
+          ) : reservas.length === 0 ? (
+            <Text style={{ color:"#6b7280" }}>Aún no tienes reservas.</Text>
+          ) : (
+            <>
+              {reservas.slice(0, 3).map((r) => (
+                <ReservaRow key={r.id} r={r} />
+              ))}
+              {reservas.length > 3 && (
+                <TouchableOpacity
+                  style={[styles.btn, styles.btnNeutral]}
+                  onPress={() => router.push("/(reservar)/mis-reservas")}
+                >
+                  <Text style={styles.btnText}>Ver todas</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
         </Section>
 
-        {/* Grupos del usuario (mock visual) */}
-        <Section title="Mis grupos">
-          {MOCK_GRUPOS.map(g => (
-            <View key={g.id} style={styles.itemRow}>
-              <View>
-                <Text style={styles.itemTitle}>{g.nombre}</Text>
-                <Text style={styles.itemSub}>Rol: {g.rol}</Text>
-              </View>
-              <TouchableOpacity onPress={()=>{ /* router.push(`/grupos/${g.id}`) */ }}>
-                <Ionicons name="chevron-forward" size={20} />
-              </TouchableOpacity>
-            </View>
-          ))}
-        </Section>
-
-        {/* Cerrar sesión */}
+        {/* Sesión */}
         <Section title="Sesión">
           <TouchableOpacity
             onPress={async ()=>{ try{ /* await AuthAPI.logout(); */ } catch{} await logout(); router.replace("/(auth)/login"); }}
@@ -288,19 +339,18 @@ export default function PerfilScreen() {
         </Section>
       </ScrollView>
 
-      {/* TOAST de éxito */}
+      {/* TOAST éxito */}
       <Animated.View pointerEvents="none" style={[styles.toast, toastStyle]}>
         <Ionicons name="checkmark-circle" size={22} color="#065f46" />
         <Text style={{ color:"#065f46", fontWeight:"800" }}>¡Guardado!</Text>
       </Animated.View>
 
-      {/* MODAL de confirmación */}
+      {/* Modal confirmación */}
       <Modal visible={confirmOpen} animationType="fade" transparent onRequestClose={() => setConfirmOpen(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={{ fontSize:16, fontWeight:"800" }}>Confirmar cambios</Text>
             <Text style={{ color:"#6b7280", marginTop:4 }}>Revisa y confirma los datos que vas a actualizar:</Text>
-
             <View style={{ marginTop:12, gap:8 }}>
               {cambios.length ? cambios.map((c, i) => (
                 <View key={i} style={styles.diffRow}>
@@ -315,16 +365,11 @@ export default function PerfilScreen() {
                 <Text style={{ color:"#6b7280" }}>No hay cambios</Text>
               )}
             </View>
-
             <View style={{ flexDirection:"row", gap:8, marginTop:14 }}>
               <TouchableOpacity onPress={() => setConfirmOpen(false)} style={[styles.btn, styles.btnNeutral, { flex:1 }]}>
                 <Text style={styles.btnText}>Revisar</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={confirmAndSave}
-                disabled={saving}
-                style={[styles.btn, styles.btnPrimary, { flex:1 }, saving && { opacity: 0.6 }]}
-              >
+              <TouchableOpacity onPress={confirmAndSave} disabled={saving} style={[styles.btn, styles.btnPrimary, { flex:1 }, saving && { opacity: 0.6 }]}>
                 {saving ? <ActivityIndicator /> : <Text style={styles.btnText}>Confirmar y guardar</Text>}
               </TouchableOpacity>
             </View>
@@ -335,7 +380,7 @@ export default function PerfilScreen() {
   );
 }
 
-// --------- UI helpers ----------
+/* ========= UI helpers ========= */
 function Section({ title, children }:{ title:string; children:React.ReactNode }) {
   return (
     <View style={{ paddingHorizontal:16, marginTop:14 }}>
@@ -366,17 +411,76 @@ function Field({
   );
 }
 
-function ReservaBadge({ text }:{ text:Reserva["estado"] }) {
-  const bg = text === "confirmada" ? "#dcfce7" : text === "pendiente" ? "#fef9c3" : "#fee2e2";
-  const fg = text === "confirmada" ? "#166534" : text === "pendiente" ? "#854d0e" : "#991b1b";
+function ReservaBadge({ status }:{ status:string }) {
+  const key = (status || "").toLowerCase();
+  const map: Record<string, { bg: string; fg: string; label: string }> = {
+    confirmed: { bg: "#dcfce7", fg: "#166534", label: "Confirmada" },
+    confirmada:{ bg: "#dcfce7", fg: "#166534", label: "Confirmada" },
+    pending:   { bg: "#fef9c3", fg: "#854d0e", label: "Pendiente"  },
+    pendiente: { bg: "#fef9c3", fg: "#854d0e", label: "Pendiente"  },
+    cancelled: { bg: "#fee2e2", fg: "#991b1b", label: "Cancelada"  },
+    cancelada: { bg: "#fee2e2", fg: "#991b1b", label: "Cancelada"  },
+  };
+  const sty = map[key] ?? { bg:"#e5e7eb", fg:"#374151", label: status || "—" };
   return (
-    <View style={{ backgroundColor:bg, paddingHorizontal:10, paddingVertical:6, borderRadius:999 }}>
-      <Text style={{ color:fg, fontWeight:"700", textTransform:"capitalize" }}>{text}</Text>
+    <View style={{ backgroundColor: sty.bg, paddingHorizontal:10, paddingVertical:6, borderRadius:999 }}>
+      <Text style={{ color:sty.fg, fontWeight:"700" }}>{sty.label}</Text>
     </View>
   );
 }
 
-// --------- estilos ----------
+/* Item de reserva en perfil */
+function ReservaRow({ r }: { r: ReservaUI }) {
+  // Título estilo "Cancha 1 - Temuco" o "Complejo" si no hay cancha
+  const title =
+    (r.cancha?.name ? `${r.cancha.name}` : "") +
+    (r.venue?.name ? (r.cancha?.name ? " - " : "") + r.venue.name : r.cancha?.name ? "" : "Complejo");
+
+  // "Dom 18:00, 22 Sep"
+  const subtitle = formatFechaFila(r.date, r.startTime);
+
+  return (
+    <TouchableOpacity
+      style={styles.itemRow}
+      onPress={() =>
+        router.push({
+          pathname: "/(tabs)/reservadetalle",
+          params: {
+            id: r.id,
+            cancha: r.cancha?.name?.toString() ?? "",
+            complejo: r.venue?.name ?? "",
+            fecha: r.date ?? "",
+            inicio: r.startTime ?? "",
+            fin: r.endTime ?? "",
+            estado: (r.status ?? "").toLowerCase(),
+            notas: r.notas ?? "",
+          },
+        })
+      }
+    >
+      <View>
+        <Text style={styles.itemTitle}>{title}</Text>
+        <Text style={styles.itemSub}>{subtitle}</Text>
+      </View>
+      <ReservaBadge status={r.status} />
+    </TouchableOpacity>
+  );
+}
+
+function formatFechaFila(fecha?: string, inicio?: string) {
+  if (!fecha) return "—";
+  try {
+    const d = new Date(`${fecha}T00:00:00`);
+    const dow = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(d); // Dom
+    const dayMon = new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(d); // 22 sep
+    return `${capitalize(dow)} ${inicio ? `${inicio}, ` : ""}${dayMon}`;
+  } catch {
+    return [inicio, fecha].filter(Boolean).join(", ");
+  }
+}
+function capitalize(s: string) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+/* ========= estilos ========= */
 const styles = StyleSheet.create({
   header:{ paddingHorizontal:16, paddingTop:16, paddingBottom:6, flexDirection:"row", alignItems:"center", gap:12 },
   headerTitle:{ fontSize:20, fontWeight:"800", flex:1, textAlign:"center" },

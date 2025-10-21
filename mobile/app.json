@@ -3,7 +3,7 @@
     "name": "SportHubTemuco",
     "slug": "sporthub-temuco",
     "extra": {
-      "API_URL": "http://localhost:8000/api/v1"
+      "API_URL": "http://api-h1d7oi-a881cc-168-232-167-73.traefik.me/api/v1"
     },
     "version": "1.0.0",
     "orientation": "portrait",

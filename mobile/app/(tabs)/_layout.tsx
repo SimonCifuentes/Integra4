@@ -4,7 +4,6 @@ export default function TabsLayout() {
   return (
     <Tabs screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="index" options={{ title: "Inicio" }} />
-      <Tabs.Screen name="explore" options={{ title: "Explorar" }} />
       <Tabs.Screen name="reservas" options={{ title: "Reservas" }} />
       <Tabs.Screen name="perfil" options={{ title: "Perfil" }} />
       {/* 👇 NO pongas href:null en la base */}

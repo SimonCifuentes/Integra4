@@ -16,7 +16,7 @@ const DEV_BYPASS_AUTH = false;
 
 export default function LoginScreen() {
   // Sugerencia: deja prellenado con un usuario seed real de tu DB si quieres
-  const [email, setEmail] = useState("user@playtemuco.cl");
+  const [email, setEmail] = useState("root@sporthub.temuco");
   const [password, setPassword] = useState("Cambiar.123");
 
   const [showPass, setShowPass] = useState(false);

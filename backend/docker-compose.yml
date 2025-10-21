@@ -18,14 +18,12 @@ services:
 
   api:
     build: .
+    # ⬇️ Ajusta el módulo si tu main vive en otro lado (ver nota debajo)
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
       - DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/sporthubtemuco
       - JWT_SECRET=d91ee074-3358-4a9a-ab7a-fddfe1a56a92
-      # ⬇️ CORRECCIÓN AQUÍ ⬇️
-      # Lista simple separada por comas, sin espacios, corchetes ni comillas internas.
-      # También quité la barra "/" al final de localhost:8081 por seguridad.
-      - CORS_ORIGINS=http://localhost:5173,http://localhost:8000,http://localhost:8081,http://127.0.0.1:8081
+      - CORS_ORIGINS=["http://localhost:5173","http://localhost:8000","http://localhost:8081","http://127.0.0.1:8081"]
     ports:
       - "8000:8000"
     depends_on:
