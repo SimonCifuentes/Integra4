@@ -420,3 +420,16 @@ def resumen_basico(db: Session, id_complejo: int, desde: str, hasta: str) -> Dic
         "ingresos_confirmados": ingresos_confirmados,
         "ocupacion": round(ocupacion, 4),
     }
+
+def list_by_owner(db: Session, owner_id: int) -> list[dict]:
+    rows = db.execute(text("""
+        SELECT id_complejo, id_dueno, nombre, direccion,
+               /* si tienes comuna por FK la resolvemos neutro */
+               NULL::text AS comuna,
+               id_comuna,
+               latitud, longitud, descripcion, activo
+        FROM complejos
+        WHERE id_dueno = :oid AND deleted_at IS NULL
+        ORDER BY nombre ASC
+    """), {"oid": owner_id}).mappings().all()
+    return [dict(r) for r in rows]

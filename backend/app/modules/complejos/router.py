@@ -8,6 +8,7 @@ from app.modules.complejos.schemas import (
     ComplejosQuery, ComplejosListOut, ComplejoOut, ComplejoCreateIn, ComplejoUpdateIn,
     CanchaOut, HorarioOut, BloqueoOut, ResumenOut
 )
+from app.modules.complejos.service import list_complejos_by_owner as svc_list_by_owner
 from app.modules.complejos.service import (
     list_complejos as svc_list,
     create_complejo as svc_create,
@@ -83,6 +84,19 @@ def list_endpoint(
         sort_by=sort_by, order=order, page=page, page_size=page_size
     )
     return svc_list(db, params)
+
+@router.get(
+    "/duenio/{duenio_id:int}",
+    response_model=list[ComplejoOut],
+    summary="(Panel) Complejos de un dueño/admin",
+    description="Devuelve los complejos cuyo `id_dueno` coincide. Admin: solo los suyos. Superadmin: cualquiera."
+)
+def list_by_owner_endpoint(
+    duenio_id: int,
+    db: Session = Depends(get_db),
+    current: Usuario = Depends(get_current_user),
+):
+    return svc_list_by_owner(db, current, duenio_id)
 
 @router.post(
     "",

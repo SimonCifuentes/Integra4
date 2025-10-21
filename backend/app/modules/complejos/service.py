@@ -127,3 +127,10 @@ def resumen(db: Session, id_complejo: int, desde: Optional[str], hasta: Optional
         ingresos_confirmados=float(kpis["ingresos_confirmados"]),
         ocupacion=float(kpis["ocupacion"])
     )
+
+def list_complejos_by_owner(db: Session, current: Usuario, duenio_id: int) -> list[ComplejoOut]:
+    # admin solo puede verse a sí mismo; superadmin puede ver a cualquiera
+    if current.rol != "superadmin" and current.id_usuario != duenio_id:
+        raise HTTPException(status_code=403, detail="Sin permisos")
+    rows = repo.list_by_owner(db, duenio_id)
+    return [ComplejoOut(**r) for r in rows]
