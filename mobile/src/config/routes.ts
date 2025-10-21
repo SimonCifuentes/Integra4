@@ -12,6 +12,11 @@
     mePatch: "/auth/me",
     changePassword: "/auth/me/password",
     pushToken: "/auth/me/push-token",
+    complejos: "/api/v1/complejos",
+    
+    
+  
+
   },
   usuarios: { list: "/usuarios", byId: (id:number)=>`/usuarios/${id}` },
   uploads: { presign: "/uploads/presign", direct: "/uploads", delete: (id:string|number)=>`/uploads/${id}` },
