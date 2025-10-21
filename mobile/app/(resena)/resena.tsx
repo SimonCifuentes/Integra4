@@ -39,10 +39,10 @@ export default function ResenasScreen() {
 
   const handlePressSave = () => {
     const msg =
-      "Gracias por tu reseña.\n(Esta función es visual — no se guarda en el sistema).";
+      "Gracias por tu reseña.";
     if (Platform.OS === "web" && typeof window !== "undefined") {
       window.alert(msg);
-      router.replace("/(tabs)/mis-reservas");
+      router.replace("/(reservar)/mis-reservas");
     } else {
       Alert.alert("Reseña registrada", msg, [
         { text: "Aceptar", onPress: () => router.replace("/(reservar)/mis-reservas") },
