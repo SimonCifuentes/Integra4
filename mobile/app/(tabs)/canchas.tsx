@@ -1,4 +1,3 @@
-// app/(tabs)/canchas.tsx
 import React, { useMemo, useState } from "react";
 import {
   View,
@@ -15,6 +14,8 @@ import { router } from "expo-router";
 import { useCanchas } from "@/src/features/features/canchas/hooks";
 import ReservaModal from "@/src/components/ReservaModal";
 
+const TEAL = "#0ea5a4";
+
 type CanchaBE = {
   id_cancha: number;
   nombre: string;
@@ -28,51 +29,97 @@ type CanchaBE = {
   sector?: string;             // o comuna/barrio
 };
 
+function normalize(s?: string | number | null) {
+  if (s == null) return "";
+  return String(s)
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
+}
+
+// Intenta deducir deporte desde `deporte` o desde el prefijo de `tipo` (e.g., "Fútbol 7" -> "Futbol")
+function inferDeporte(item: CanchaBE): string {
+  const d = item.deporte;
+  if (d && normalize(d)) return d;
+
+  const t = item.tipo ?? "";
+  const firstWord = t.split(/\s+/)[0] ?? "";
+  return firstWord || "";
+}
+
+function formatCLP(n?: number | null) {
+  if (typeof n !== "number") return "";
+  try {
+    return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(n);
+  } catch {
+    return `$${(n ?? 0).toLocaleString("es-CL")}`;
+  }
+}
+
 export default function CanchasScreen() {
-  // ✅ llamada funcional que ya tenías
   const { data, isLoading, isError, refetch, isRefetching } = useCanchas({ page: 1, page_size: 20 });
 
   // UI state (buscador + filtros)
   const [q, setQ] = useState("");
   const [fDeporte, setFDeporte] = useState<string | null>(null);
   const [fSector, setFSector] = useState<string | null>(null);
-  const [fFecha, setFFecha] = useState<string | null>(null); // decorativo
+  const [fFecha, setFFecha] = useState<string | null>(null); // "Hoy" activa disponible_hoy
 
   // Reserva modal state
   const [selectedCancha, setSelectedCancha] = useState<CanchaBE | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  // Opciones rápidas (si tu API trae catálogos, reemplázalas)
-  const deportes = ["Fútbol", "Pádel", "Tenis", "Básquetbol"];
-  const sectores = ["Centro", "Ñielol", "Labranza"];
-
-  // Normaliza items desde el backend (exactamente como tu code base)
+  // Normaliza items desde el backend
   const items: CanchaBE[] = (data?.items ?? []) as CanchaBE[];
 
-  // Filtros/búsqueda en cliente (no toca la request)
+  // Catálogos dinámicos a partir de los datos
+  const deportesOpciones = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of items) {
+      const dep = inferDeporte(it);
+      const norm = normalize(dep);
+      if (norm) set.add(dep); // guardamos label original
+    }
+    return Array.from(set).sort((a, b) => normalize(a).localeCompare(normalize(b)));
+  }, [items]);
+
+  const sectoresOpciones = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of items) {
+      const sec = it.sector ?? "";
+      const norm = normalize(sec);
+      if (norm) set.add(sec);
+    }
+    return Array.from(set).sort((a, b) => normalize(a).localeCompare(normalize(b)));
+  }, [items]);
+
+  // Filtros/búsqueda (cliente) — AHORA FUNCIONAN con normalización y deducción
   const canchas = useMemo(() => {
+    const qn = normalize(q);
+    const depN = normalize(fDeporte ?? "");
+    const secN = normalize(fSector ?? "");
+    const filtraHoy = fFecha === "Hoy";
+
     return items
-      .filter((c) =>
-        (q
-          ? (
-              (c.nombre_complejo ?? "") +
-              " " +
-              (c.tipo ?? "") +
-              " " +
-              (c.deporte ?? "") +
-              " " +
-              (c.sector ?? "") +
-              " " +
-              (c.nombre ?? "")
-            )
-              .toLowerCase()
-              .includes(q.toLowerCase())
-          : true) &&
-        (fDeporte ? c.deporte === fDeporte : true) &&
-        (fSector ? c.sector === fSector : true)
-      )
+      .filter((c) => {
+        const texto = normalize(
+          `${c.nombre_complejo ?? ""} ${c.tipo ?? ""} ${c.deporte ?? ""} ${c.sector ?? ""} ${c.nombre ?? ""}`
+        );
+
+        const deporteItem = inferDeporte(c);
+        const deporteN = normalize(deporteItem);
+        const sectorN = normalize(c.sector ?? "");
+
+        const matchQ = qn ? texto.includes(qn) : true;
+        const matchDeporte = depN ? deporteN === depN : true;
+        const matchSector = secN ? sectorN === secN : true;
+        const matchFecha = filtraHoy ? Boolean(c.disponible_hoy) : true;
+
+        return matchQ && matchDeporte && matchSector && matchFecha;
+      })
       .sort((a, b) => Number(b.disponible_hoy ?? 0) - Number(a.disponible_hoy ?? 0));
-  }, [items, q, fDeporte, fSector]);
+  }, [items, q, fDeporte, fSector, fFecha]);
 
   // --- Reserva: abrir modal
   const openReserva = (cancha: CanchaBE) => {
@@ -80,7 +127,7 @@ export default function CanchasScreen() {
     setModalVisible(true);
   };
 
-  // --- Reserva: submit (aquí conectas tu POST real)
+  // --- Reserva: submit (conecta tu POST real aquí)
   const handleReservaSubmit = async (reservaData: {
     fecha: string;
     horaInicio: string;
@@ -96,22 +143,17 @@ export default function CanchasScreen() {
     };
 
     console.log("POST /reservas payload:", payload);
-
-    // Ejemplo para conectar tu API:
     // await http.post(R.reservas.create, payload);
 
     setModalVisible(false);
   };
 
-  // Header visual, buscador y filtros como ListHeaderComponent de FlatList
+  // Header visual, buscador y filtros (estilo canchas-por-complejo)
   const listHeader = (
     <>
-      {/* Header integrado */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Buscar</Text>
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-          <Segment label="Canchas" active onPress={() => {}} />
-        </View>
+      <View style={styles.headerTop}>
+        <Text style={styles.headerTitle}>Todas las canchas</Text>
+        <Text style={styles.subtle}>Explora por deporte, complejo o sector</Text>
       </View>
 
       {/* Buscador */}
@@ -132,34 +174,50 @@ export default function CanchasScreen() {
         </View>
       </View>
 
-      {/* Filtros rápidos */}
+      {/* Filtros (con opciones reales del dataset) */}
       <View style={styles.filtersRow}>
         <DropdownChip
           icon="football-outline"
           label={fDeporte ?? "Deporte"}
           onPress={() => {
-            const idx = deportes.indexOf(fDeporte ?? "");
-            const next = idx < 0 ? deportes[0] : idx + 1 >= deportes.length ? null : deportes[idx + 1];
-            setFDeporte(next);
+            // Cicla por las opciones detectadas + (limpiar)
+            if (deportesOpciones.length === 0) return;
+            if (!fDeporte) {
+              setFDeporte(deportesOpciones[0]);
+            } else {
+              const idx = deportesOpciones.findIndex((d) => normalize(d) === normalize(fDeporte));
+              const next = idx < 0 || idx + 1 >= deportesOpciones.length ? null : deportesOpciones[idx + 1];
+              setFDeporte(next);
+            }
           }}
           active={!!fDeporte}
+          count={fDeporte ? canchas.filter(c => normalize(inferDeporte(c)) === normalize(fDeporte)).length : undefined}
         />
         <DropdownChip
           icon="map-outline"
           label={fSector ?? "Sector"}
           onPress={() => {
-            const idx = sectores.indexOf(fSector ?? "");
-            const next = idx < 0 ? sectores[0] : idx + 1 >= sectores.length ? null : sectores[idx + 1];
-            setFSector(next);
+            if (sectoresOpciones.length === 0) return;
+            if (!fSector) {
+              setFSector(sectoresOpciones[0]);
+            } else {
+              const idx = sectoresOpciones.findIndex((s) => normalize(s) === normalize(fSector));
+              const next = idx < 0 || idx + 1 >= sectoresOpciones.length ? null : sectoresOpciones[idx + 1];
+              setFSector(next);
+            }
           }}
           active={!!fSector}
+          count={fSector ? canchas.filter(c => normalize(c.sector ?? "") === normalize(fSector)).length : undefined}
         />
         <DropdownChip
           icon="calendar-outline"
           label={fFecha ?? "Fecha"}
           onPress={() => setFFecha(fFecha ? null : "Hoy")}
           active={!!fFecha}
+          // si está en "Hoy" muestra cuántas disponibles hoy
+          count={fFecha ? canchas.filter(c => c.disponible_hoy).length : undefined}
         />
+
         {(fDeporte || fSector || fFecha) && (
           <TouchableOpacity
             onPress={() => {
@@ -173,63 +231,81 @@ export default function CanchasScreen() {
         )}
       </View>
 
-      {/* Loading / Error (arriba de la lista) */}
+      {/* Loading / Error */}
       {isLoading && (
         <View style={{ paddingVertical: 16, alignItems: "center" }}>
           <ActivityIndicator />
+          <Text style={styles.muted}>Cargando canchas…</Text>
         </View>
       )}
       {isError && !isLoading && (
         <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
           <Text style={{ color: "#b91c1c" }}>No se pudieron cargar las canchas. Reintenta.</Text>
           <TouchableOpacity onPress={() => refetch()} style={[styles.btnOutline, { marginTop: 8 }]}>
-            <Text style={{ color: "#0ea5a4", fontWeight: "700" }}>Reintentar</Text>
+            <Text style={{ color: TEAL, fontWeight: "700" }}>Reintentar</Text>
           </TouchableOpacity>
         </View>
       )}
+
+      <Text style={[styles.sectionTitle, { marginTop: 6, paddingHorizontal: 16 }]}>Resultados</Text>
     </>
   );
 
-  // Render de cada card (tu UI original)
-  const renderItem = ({ item }: { item: CanchaBE }) => (
-    <View style={styles.card}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <View style={styles.roundIcon}>
-          <Ionicons name="football-outline" size={16} color="#0ea5a4" />
+  const renderItem = ({ item }: { item: CanchaBE }) => {
+    const deporteUI = inferDeporte(item) || "—";
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Ionicons name="football-outline" size={20} color={TEAL} />
+          <Text style={styles.cardTitle}>{item.nombre ?? item.tipo ?? deporteUI}</Text>
         </View>
-        <View style={{ flex: 1 }}>
-          {/* nombre de la cancha como título */}
-          <Text style={styles.cardTitle}>{item.nombre ?? item.tipo ?? item.deporte ?? "—"}</Text>
-          <Text style={styles.cardSub}>
-            {item.nombre_complejo ?? "Complejo"} · {item.sector ?? "—"}
+
+        <View style={styles.cardBody}>
+          <Text style={styles.text}>🏅 Deporte: {deporteUI}</Text>
+          <Text style={styles.text}>🧱 Superficie: {item.superficie ?? "—"}</Text>
+          <Text style={styles.text}>
+            🏷️ Precio: {typeof item.precio_desde === "number" ? `${formatCLP(item.precio_desde)}/h` : "—"}
           </Text>
-          <Text style={styles.cardSub}>
-            {item.superficie ? `${item.superficie} · ` : ""}
-            {typeof item.precio_desde === "number" ? `Desde ${formatCLP(item.precio_desde)}/h` : ""}
+          <Text style={styles.text}>
+            📍 {item.nombre_complejo ?? "Complejo"} · {item.sector ?? "—"}
           </Text>
+          {typeof item.disponible_hoy === "boolean" && (
+            <View style={{ marginTop: 6 }}>
+              <Badge text={item.disponible_hoy ? "Hoy disponible" : "Hoy no hay"} tone={item.disponible_hoy ? "success" : "muted"} />
+            </View>
+          )}
         </View>
-        {typeof item.disponible_hoy === "boolean" && (
-          <Badge text={item.disponible_hoy ? "Hoy disponible" : "Hoy no hay"} tone={item.disponible_hoy ? "success" : "muted"} />
-        )}
+
+        <View style={styles.cardActionsRow}>
+          <TouchableOpacity
+            style={styles.btnGhost}
+            onPress={() =>
+              router.push({
+                pathname: "/canchas-por-complejo",
+                params: { complejoId: String(item.id_complejo ?? ""), nombre: item.nombre_complejo ?? "" },
+              })
+            }
+          >
+            <Ionicons name="business-outline" size={16} color={TEAL} />
+            <Text style={styles.btnGhostTxt}>Ver complejo</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.btnPrimary}
+            onPress={() =>
+              router.push({
+                pathname: "/(reservar)/reservar",
+                params: { canchaId: String(item.id_cancha) },
+              })
+            }
+          >
+            <Ionicons name="calendar-outline" size={16} color="#fff" />
+            <Text style={styles.btnPrimaryTxt}>Reservar</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.cardActions}>
-  {/* Ver cancha (detalle individual) */}
-  
-
-  {/* Reservar (manda id de cancha a la pantalla de reservar) */}
-  <PrimaryBtn
-    text="Reservar"
-    onPress={() =>
-      router.push({
-        pathname: "/(reservar)/reservar",
-        params: { canchaId: String(item.id_cancha) },
-      })
-    }
-  />
-</View>
-
-    </View>
-  );
+    );
+  };
 
   if (!isLoading && !isError && canchas.length === 0) {
     return (
@@ -239,7 +315,8 @@ export default function CanchasScreen() {
         ListHeaderComponent={listHeader}
         ListEmptyComponent={<EmptyState text="No encontramos canchas con esos filtros." />}
         refreshControl={<RefreshControl refreshing={!!isRefetching} onRefresh={() => refetch()} />}
-        contentContainerStyle={{ paddingBottom: 24, paddingHorizontal: 16, gap: 12 }} renderItem={undefined}      />
+        contentContainerStyle={{ paddingBottom: 24, paddingHorizontal: 16, gap: 12 }}
+      />
     );
   }
 
@@ -254,7 +331,6 @@ export default function CanchasScreen() {
         contentContainerStyle={{ paddingBottom: 24, paddingHorizontal: 16, gap: 12 }}
       />
 
-      {/* Modal de reserva */}
       <ReservaModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
@@ -266,46 +342,25 @@ export default function CanchasScreen() {
 }
 
 /* ---------- UI helpers ---------- */
-function Segment({ label, active, onPress }: { label: string; active?: boolean; onPress: () => void }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={[styles.segment, active && styles.segmentActive]}>
-      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
 function DropdownChip({
   icon,
   label,
   onPress,
   active,
+  count,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
   active?: boolean;
+  count?: number;
 }) {
   return (
     <TouchableOpacity onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
-      <Ionicons name={icon} size={14} color={active ? "#0ea5a4" : "#64748b"} />
+      <Ionicons name={icon} size={14} color={active ? TEAL : "#64748b"} />
       <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
-      <Ionicons name="chevron-down" size={14} color={active ? "#0ea5a4" : "#94a3b8"} />
-    </TouchableOpacity>
-  );
-}
-
-function PrimaryBtn({ text, onPress }: { text: string; onPress: () => void }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.btnPrimary}>
-      <Text style={{ color: "white", fontWeight: "700" }}>{text}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function OutlineBtn({ text, onPress }: { text: string; onPress: () => void }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.btnOutline}>
-      <Text style={{ color: "#0ea5a4", fontWeight: "700" }}>{text}</Text>
+      {typeof count === "number" && <Text style={styles.chipCount}>{count}</Text>}
+      <Ionicons name="chevron-down" size={14} color={active ? TEAL : "#94a3b8"} />
     </TouchableOpacity>
   );
 }
@@ -328,34 +383,12 @@ function EmptyState({ text }: { text: string }) {
   );
 }
 
-function formatCLP(n?: number | null) {
-  if (typeof n !== "number") return "";
-  try {
-    return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(n);
-  } catch {
-    return `$${(n ?? 0).toLocaleString("es-CL")}`;
-  }
-}
-
 /* ---------- estilos ---------- */
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 10,
-    backgroundColor: "#0d9488",
-  },
-  title: { color: "white", fontSize: 20, fontWeight: "800" },
-
-  segment: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.2)",
-  },
-  segmentActive: { backgroundColor: "#ffffff" },
-  segmentText: { color: "white", fontWeight: "700" },
-  segmentTextActive: { color: "#0d9488" },
+  headerTop: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
+  headerTitle: { fontSize: 18, fontWeight: "800", color: "#111827" },
+  subtle: { color: "#6b7280" },
+  muted: { color: "#6b7280", textAlign: "center", marginTop: 8 },
 
   searchWrap: {
     marginTop: 12,
@@ -393,38 +426,54 @@ const styles = StyleSheet.create({
   },
   chipActive: { borderColor: "#99f6e4", backgroundColor: "#ecfeff" },
   chipText: { color: "#334155", fontWeight: "600" },
-  chipTextActive: { color: "#0ea5a4" },
+  chipTextActive: { color: TEAL },
+  chipCount: { marginLeft: 4, fontWeight: "800", color: "#334155" },
+
+  sectionTitle: { fontSize: 16, fontWeight: "800", color: "#111827", marginBottom: 8 },
 
   card: {
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
     backgroundColor: "#fff",
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 14,
     marginBottom: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#e5e7eb",
+    elevation: 1,
   },
-  roundIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#ecfeff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cardTitle: { fontWeight: "800", fontSize: 16 },
-  cardSub: { color: "#6b7280", marginTop: 2 },
+  cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 6, gap: 8 },
+  cardTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
+  cardBody: { marginBottom: 10 },
+  text: { color: "#374151", marginBottom: 4 },
 
-  cardActions: { flexDirection: "row", gap: 10, marginTop: 12 },
+  cardActionsRow: { flexDirection: "row", gap: 10 },
+
+  btnGhost: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 10,
+    justifyContent: "center",
+    borderRadius: 10,
+    backgroundColor: "#f0fdfa",
+    borderWidth: 1,
+    borderColor: "#99f6e4",
+  },
+  btnGhostTxt: { color: TEAL, fontWeight: "800" },
+
   btnPrimary: {
     flex: 1,
-    height: 44,
-    borderRadius: 10,
-    backgroundColor: "#0ea5a4",
+    flexDirection: "row",
     alignItems: "center",
+    gap: 6,
     justifyContent: "center",
+    backgroundColor: TEAL,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
+  btnPrimaryTxt: { color: "#fff", fontWeight: "700" },
+
   btnOutline: {
-    flex: 1,
     height: 44,
     borderRadius: 10,
     borderWidth: 1,

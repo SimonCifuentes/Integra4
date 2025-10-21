@@ -85,7 +85,128 @@ async function fetchMisReservas(): Promise<ReservaUI[]> {
   });
 }
 
-/* ========= Helpers de Rol ========= */
+/* ========= Helpers de JWT / Rol (FIXED) ========= */
+function b64UrlDecode(str: string): string | null {
+  try {
+    const pad = "=".repeat((4 - (str.length % 4)) % 4);
+    const base64 = (str.replace(/-/g, "+").replace(/_/g, "/")) + pad;
+    if (typeof (globalThis as any).atob === "function") {
+      return (globalThis as any).atob(base64);
+    }
+    // Fallback muy básico para RN sin atob (puede omitirse si no lo necesitas)
+    return Buffer ? Buffer.from(base64, "base64").toString("binary") : null;
+  } catch {
+    return null;
+  }
+}
+function parseJwt(token?: string | null) {
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const json = b64UrlDecode(parts[1]);
+    if (!json) return null;
+    return JSON.parse(json); // evitamos escape()/decodeURIComponent para no romper en RN
+  } catch {
+    return null;
+  }
+}
+function normalizeStr(s?: string) {
+  // NFD + eliminar diacríticos compatible con Metro/Hermes
+  return (s ?? "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+/** Mapea un string cualquiera a uno de: superadmin | admin_general | admin_grupos | owner | usuario */
+function normalizeRoleName(input?: string): string | null {
+  const r = normalizeStr(input);
+  if (!r) return null;
+  if (["superadmin", "super-admin", "super_admin", "root"].includes(r)) return "superadmin";
+
+  if (
+    ["admin", "admin_general", "admin-general", "admin general", "administrator", "administrador"].includes(r)
+  ) return "admin_general";
+
+  if (
+    ["admin_grupos", "admin:grupos", "groups_admin", "group_admin", "admin grupos"].includes(r)
+  ) return "admin_grupos";
+
+  if (["owner", "dueno", "dueño", "propietario"].includes(r)) return "owner";
+
+  if (["user", "usuario", "basic"].includes(r)) return "usuario";
+  return null;
+}
+
+/** Deducción de rol a partir del objeto `me` del backend */
+function deriveRoleFromMe(me: any): string | null {
+  const direct =
+    normalizeRoleName(me?.rol) ||
+    normalizeRoleName(me?.role) ||
+    (Array.isArray(me?.roles) && me.roles.map(normalizeRoleName).find(Boolean)) ||
+    (Array.isArray(me?.permisos) && me.permisos.map(normalizeRoleName).find(Boolean)) ||
+    null;
+
+  if (direct) return direct;
+
+  // flags booleanas frecuentes
+  if (me?.is_superadmin) return "superadmin";
+  if (me?.is_admin_general || me?.is_admin) return "admin_general";
+  if (me?.is_admin_grupos) return "admin_grupos";
+  if (me?.is_owner) return "owner";
+
+  return null;
+}
+
+/** Prioridad: superadmin > admin_general > admin_grupos > owner > usuario */
+function pickHighestRole(roles?: string[] | null): string | null {
+  if (!roles?.length) return null;
+  const rank = (r: string) =>
+    r === "superadmin" ? 5 :
+    r === "admin_general" ? 4 :
+    r === "admin_grupos" ? 3 :
+    r === "owner" ? 2 :
+    r === "usuario" ? 1 : 0;
+
+  let best: string | null = null;
+  for (const r of roles) {
+    if (!best || rank(r) > rank(best)) best = r;
+  }
+  return best;
+}
+
+/** Deducción de rol a partir de claims del JWT */
+async function deriveRoleFromTokenStorage(): Promise<string | null> {
+  const token = await getToken();
+  const p = parseJwt(token);
+  if (!p) return null;
+
+  const buckets: any[] = [];
+  if (Array.isArray(p.roles)) buckets.push(...p.roles);
+  if (Array.isArray(p.authorities)) buckets.push(...p.authorities);
+  if (Array.isArray(p.permissions)) buckets.push(...p.permissions);
+  if (typeof p.scope === "string") buckets.push(...String(p.scope).split(" "));
+  if (p.role) buckets.push(p.role);
+
+  const normalized = buckets.map((x) => normalizeRoleName(String(x))).filter(Boolean) as string[];
+  return pickHighestRole(normalized);
+}
+
+/** Punto único para obtener el rol efectivo */
+async function computeEffectiveRole(me: any): Promise<string> {
+  const fromMe = deriveRoleFromMe(me);
+  if (fromMe) return fromMe;
+
+  const fromToken = await deriveRoleFromTokenStorage();
+  if (fromToken) return fromToken;
+
+  return "usuario"; // fallback
+}
+
+/* ========= Helpers de Rol (UI) ========= */
 function getRoleLabel(rol?: string) {
   const r = (rol || "").toLowerCase();
   if (r === "superadmin") return "Superadmin";
@@ -124,8 +245,14 @@ export default function PerfilScreen() {
       try {
         setLoadingMe(true);
         setErrorMe(null);
+
         const me = await AuthAPI.me();
-        await setUser(me);
+
+        // Derivar rol desde `me` y/o JWT, e inyectarlo al store
+        const effectiveRol = await computeEffectiveRole(me);
+        const withRol = { ...me, rol: effectiveRol };
+
+        await setUser(withRol);
       } catch (e: any) {
         setErrorMe(e?.response?.data?.detail ?? "No se pudo cargar tu perfil.");
       } finally {
@@ -287,7 +414,13 @@ export default function PerfilScreen() {
             </View>
             <RoleBadge rol={rawRole} />
           </View>
-          <Text style={{ color:"#6b7280" }}>
+
+          {/* Debug opcional (quitar en prod) */}
+          {/* <Text style={{ color:"#9ca3af", marginTop:6, fontSize:12 }}>
+            rol raw: {(user as any)?.rol ?? (user as any)?.role ?? "—"}
+          </Text> */}
+
+          <Text style={{ color:"#6b7280", marginTop:6 }}>
             Los permisos en la app dependen de tu rol. Si necesitas cambiarlo, contáctate con un administrador.
           </Text>
         </Section>
@@ -429,14 +562,11 @@ function ReservaBadge({ status }:{ status:string }) {
   );
 }
 
-/* Item de reserva en perfil */
 function ReservaRow({ r }: { r: ReservaUI }) {
-  // Título estilo "Cancha 1 - Temuco" o "Complejo" si no hay cancha
   const title =
     (r.cancha?.name ? `${r.cancha.name}` : "") +
     (r.venue?.name ? (r.cancha?.name ? " - " : "") + r.venue.name : r.cancha?.name ? "" : "Complejo");
 
-  // "Dom 18:00, 22 Sep"
   const subtitle = formatFechaFila(r.date, r.startTime);
 
   return (
@@ -444,7 +574,7 @@ function ReservaRow({ r }: { r: ReservaUI }) {
       style={styles.itemRow}
       onPress={() =>
         router.push({
-          pathname: "/(tabs)/reservadetalle",
+          pathname: "/(reservar)/reservadetalle",
           params: {
             id: r.id,
             cancha: r.cancha?.name?.toString() ?? "",
@@ -471,8 +601,8 @@ function formatFechaFila(fecha?: string, inicio?: string) {
   if (!fecha) return "—";
   try {
     const d = new Date(`${fecha}T00:00:00`);
-    const dow = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(d); // Dom
-    const dayMon = new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(d); // 22 sep
+    const dow = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(d);
+    const dayMon = new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(d);
     return `${capitalize(dow)} ${inicio ? `${inicio}, ` : ""}${dayMon}`;
   } catch {
     return [inicio, fecha].filter(Boolean).join(", ");

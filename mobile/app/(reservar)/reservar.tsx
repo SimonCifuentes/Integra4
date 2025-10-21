@@ -41,7 +41,8 @@ async function getToken() {
 
 async function postJSON<T>(path: string, body: any): Promise<T> {
   const token = await getToken();
-  const res = await fetch(`${API_URL}${path}`, {
+  const url = `${API_URL}${path}`;
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -113,6 +114,15 @@ const htmlInputStyle: any = {
 function extractReviewParams(created: any) {
   const reservationId =
     created?.id ?? created?.id_reserva ?? created?.reserva_id ?? created?.uuid ?? "";
+
+  // Si el backend devuelve fecha/hora separados:
+  const date =
+    created?.fecha_reserva ?? created?.fecha ?? (created?.inicio ? toYMD(new Date(created.inicio)) : "");
+  const startTime =
+    created?.hora_inicio ?? (created?.inicio ? new Date(created.inicio).toTimeString().slice(0, 5) : "");
+  const endTime =
+    created?.hora_fin ?? (created?.fin ? new Date(created.fin).toTimeString().slice(0, 5) : "");
+
   const venueId =
     created?.venue?.id ?? created?.complejo_id ?? created?.id_complejo ?? "";
   const venueName =
@@ -120,10 +130,15 @@ function extractReviewParams(created: any) {
     created?.complejo_nombre ??
     created?.complejo?.nombre ??
     "Complejo";
-  const date = created?.fecha_reserva ?? created?.fecha ?? "";
-  const startTime = created?.hora_inicio ?? created?.inicio ?? "";
-  const endTime = created?.hora_fin ?? created?.fin ?? "";
-  return { reservationId: String(reservationId || ""), venueId: String(venueId || ""), venueName, date, startTime, endTime };
+
+  return {
+    reservationId: String(reservationId || ""),
+    venueId: String(venueId || ""),
+    venueName,
+    date,
+    startTime,
+    endTime,
+  };
 }
 
 /* ============== Pantalla ============== */
@@ -141,24 +156,21 @@ export default function ReservarTab() {
   const [endTime, setEndTime] = useState(seedEnd);
   const [notes, setNotes] = useState<string>("");
 
-  // tu API espera { fecha, inicio, fin, id_cancha, notas }
+  // 🔐 Crea la reserva REAL según tu API: { id_cancha, fecha: 'YYYY-MM-DD', inicio: 'HH:mm', fin: 'HH:mm', notas? }
   const crear = useMutation({
     mutationFn: (payload: {
-      fecha: string;
-      inicio: string;
-      fin: string;
       id_cancha: number;
+      fecha: string;   // YYYY-MM-DD
+      inicio: string;  // HH:mm
+      fin: string;     // HH:mm
       notas?: string | null;
     }) => postJSON("/reservas", payload),
 
-    // ✅ Navegar a reseña apenas se cree la reserva
     onSuccess: (created: any, vars) => {
       const params = extractReviewParams(created);
       const msg = `Reserva creada para el ${vars.fecha} de ${vars.inicio} a ${vars.fin}.`;
 
-      // Si por cualquier motivo no viene un id de reserva, caemos a "Mis reservas"
       const goFallback = () => router.replace("/(reservar)/mis-reservas");
-
       const goReview = () =>
         router.replace({
           pathname: "/(resena)/resena",
@@ -194,26 +206,26 @@ export default function ReservarTab() {
     }
 
     const fecha = toYMD(date);
-    const inicio = toHM(startTime);
-    const fin = toHM(endTime);
+    const inicioHM = toHM(startTime); // HH:mm
+    const finHM = toHM(endTime);      // HH:mm
 
     // Validación simple: fin > inicio
-    const startMillis = hmToMillis(inicio);
-    const endMillis = hmToMillis(fin);
+    const startMillis = hmToMillis(inicioHM);
+    const endMillis = hmToMillis(finHM);
     if (endMillis <= startMillis) {
       const msg = "La hora de término debe ser posterior a la hora de inicio.";
       if (Platform.OS === "web") window.alert(msg); else Alert.alert("Horario inválido", msg);
       return;
     }
 
-    const confirmMsg = `¿Deseas confirmar la reserva para el ${fecha} entre ${inicio} y ${fin}?`;
+    const confirmMsg = `¿Deseas confirmar la reserva para el ${fecha} entre ${inicioHM} y ${finHM}?`;
 
     const doPost = () =>
       crear.mutate({
-        fecha,
-        inicio,
-        fin,
         id_cancha: Number(canchaId),
+        fecha,           // 👈 requerido por tu backend
+        inicio: inicioHM, // 👈 HH:mm (solo hora)
+        fin: finHM,       // 👈 HH:mm (solo hora)
         notas: notes?.trim() ? notes.trim() : null,
       });
 

@@ -103,7 +103,7 @@ export default function Home() {
   const slides: Slide[] = [
     {
       id: 'logo',
-      title: 'PlayTemuco',
+      title: 'SportHub',
       subtitle: 'Reserva, paga y juega en minutos',
       image: require('@/assets/images/logo_principal.png'),
     },
