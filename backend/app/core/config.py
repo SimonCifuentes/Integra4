@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     S3_ACCESS_KEY_ID: str | None = None
     S3_SECRET_ACCESS_KEY: str | None = None
     S3_PUBLIC_BASE_URL: str | None = None
+    REVIEWS_REQUIRE_FINISHED: bool = True  # En prod: True. En dev: False para probar rápido.
 
     # === Pydantic v2 settings ===
     model_config = SettingsConfigDict(
