@@ -11,7 +11,6 @@ import * as SecureStore from "expo-secure-store";
 import { useAuth, type Usuario } from "@/src/stores/auth";
 import { AuthAPI } from "@/src/features/features/auth/api";
 
-/* ========= Config API ========= */
 const API_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   "http://api-h1d7oi-a881cc-168-232-167-73.traefik.me/api/v1";
@@ -20,15 +19,15 @@ const API_URL =
 type ReservaUI = {
   id: string;
   status: string;
-  date?: string;       // YYYY-MM-DD
-  startTime?: string;  // HH:mm
-  endTime?: string;    // HH:mm
+  date?: string;
+  startTime?: string;
+  endTime?: string;
   cancha?: { id: string; name?: string | number };
   venue?: { id: string; name: string; address?: string };
   notas?: string | null;
 };
 
-/* ========= Auth helpers ========= */
+/* ========= Helpers ========= */
 async function getToken() {
   try {
     if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -53,25 +52,20 @@ async function apiGet<T>(path: string): Promise<T> {
   return txt ? JSON.parse(txt) : ({} as T);
 }
 
-/* ========= Reservas: fetch + normalización ========= */
 async function fetchMisReservas(): Promise<ReservaUI[]> {
   const raw = await apiGet<any>("/reservas/mias");
   const list: any[] = Array.isArray(raw) ? raw : raw?.data ?? raw?.items ?? [];
-
   return list.map((r) => {
     const id = r.id ?? r.id_reserva ?? r.reserva_id;
     const estado = r.estado ?? r.status ?? "CONFIRMED";
     const fecha = r.fecha ?? r.fecha_reserva;
     const inicio = r.inicio ?? r.hora_inicio;
     const fin = r.fin ?? r.hora_fin;
-
     const canchaId = r?.cancha?.id ?? r.cancha_id ?? r.id_cancha ?? "";
     const canchaNombre = r?.cancha?.nombre ?? r.cancha_nombre ?? r.cancha ?? canchaId ?? "";
-
     const complejoId = r?.complejo?.id ?? r.complejo_id ?? r?.venue?.id ?? "";
     const complejoNombre = r?.complejo?.nombre ?? r.complejo_nombre ?? r?.venue?.name ?? "Complejo";
     const complejoDireccion = r?.complejo?.direccion ?? r?.venue?.address ?? undefined;
-
     return {
       id: String(id),
       status: String(estado),
@@ -85,158 +79,10 @@ async function fetchMisReservas(): Promise<ReservaUI[]> {
   });
 }
 
-/* ========= Helpers de JWT / Rol (FIXED) ========= */
-function b64UrlDecode(str: string): string | null {
-  try {
-    const pad = "=".repeat((4 - (str.length % 4)) % 4);
-    const base64 = (str.replace(/-/g, "+").replace(/_/g, "/")) + pad;
-    if (typeof (globalThis as any).atob === "function") {
-      return (globalThis as any).atob(base64);
-    }
-    // Fallback muy básico para RN sin atob (puede omitirse si no lo necesitas)
-    return Buffer ? Buffer.from(base64, "base64").toString("binary") : null;
-  } catch {
-    return null;
-  }
-}
-function parseJwt(token?: string | null) {
-  if (!token) return null;
-  try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
-    const json = b64UrlDecode(parts[1]);
-    if (!json) return null;
-    return JSON.parse(json); // evitamos escape()/decodeURIComponent para no romper en RN
-  } catch {
-    return null;
-  }
-}
-function normalizeStr(s?: string) {
-  // NFD + eliminar diacríticos compatible con Metro/Hermes
-  return (s ?? "")
-    .toString()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
-/** Mapea un string cualquiera a uno de: superadmin | admin_general | admin_grupos | owner | usuario */
-function normalizeRoleName(input?: string): string | null {
-  const r = normalizeStr(input);
-  if (!r) return null;
-  if (["superadmin", "super-admin", "super_admin", "root"].includes(r)) return "superadmin";
-
-  if (
-    ["admin", "admin_general", "admin-general", "admin general", "administrator", "administrador"].includes(r)
-  ) return "admin_general";
-
-  if (
-    ["admin_grupos", "admin:grupos", "groups_admin", "group_admin", "admin grupos"].includes(r)
-  ) return "admin_grupos";
-
-  if (["owner", "dueno", "dueño", "propietario"].includes(r)) return "owner";
-
-  if (["user", "usuario", "basic"].includes(r)) return "usuario";
-  return null;
-}
-
-/** Deducción de rol a partir del objeto `me` del backend */
-function deriveRoleFromMe(me: any): string | null {
-  const direct =
-    normalizeRoleName(me?.rol) ||
-    normalizeRoleName(me?.role) ||
-    (Array.isArray(me?.roles) && me.roles.map(normalizeRoleName).find(Boolean)) ||
-    (Array.isArray(me?.permisos) && me.permisos.map(normalizeRoleName).find(Boolean)) ||
-    null;
-
-  if (direct) return direct;
-
-  // flags booleanas frecuentes
-  if (me?.is_superadmin) return "superadmin";
-  if (me?.is_admin_general || me?.is_admin) return "admin_general";
-  if (me?.is_admin_grupos) return "admin_grupos";
-  if (me?.is_owner) return "owner";
-
-  return null;
-}
-
-/** Prioridad: superadmin > admin_general > admin_grupos > owner > usuario */
-function pickHighestRole(roles?: string[] | null): string | null {
-  if (!roles?.length) return null;
-  const rank = (r: string) =>
-    r === "superadmin" ? 5 :
-    r === "admin_general" ? 4 :
-    r === "admin_grupos" ? 3 :
-    r === "owner" ? 2 :
-    r === "usuario" ? 1 : 0;
-
-  let best: string | null = null;
-  for (const r of roles) {
-    if (!best || rank(r) > rank(best)) best = r;
-  }
-  return best;
-}
-
-/** Deducción de rol a partir de claims del JWT */
-async function deriveRoleFromTokenStorage(): Promise<string | null> {
-  const token = await getToken();
-  const p = parseJwt(token);
-  if (!p) return null;
-
-  const buckets: any[] = [];
-  if (Array.isArray(p.roles)) buckets.push(...p.roles);
-  if (Array.isArray(p.authorities)) buckets.push(...p.authorities);
-  if (Array.isArray(p.permissions)) buckets.push(...p.permissions);
-  if (typeof p.scope === "string") buckets.push(...String(p.scope).split(" "));
-  if (p.role) buckets.push(p.role);
-
-  const normalized = buckets.map((x) => normalizeRoleName(String(x))).filter(Boolean) as string[];
-  return pickHighestRole(normalized);
-}
-
-/** Punto único para obtener el rol efectivo */
-async function computeEffectiveRole(me: any): Promise<string> {
-  const fromMe = deriveRoleFromMe(me);
-  if (fromMe) return fromMe;
-
-  const fromToken = await deriveRoleFromTokenStorage();
-  if (fromToken) return fromToken;
-
-  return "usuario"; // fallback
-}
-
-/* ========= Helpers de Rol (UI) ========= */
-function getRoleLabel(rol?: string) {
-  const r = (rol || "").toLowerCase();
-  if (r === "superadmin") return "Superadmin";
-  if (r === "owner" || r === "dueño" || r === "dueno") return "Dueño de complejos";
-  if (r === "admin" || r === "admin_general") return "Admin general";
-  if (r === "admin_grupos" || r === "admin:grupos" || r === "groups_admin") return "Admin de grupos";
-  return "Usuario";
-}
-function getRoleColors(rol?: string) {
-  const r = (rol || "").toLowerCase();
-  if (r === "superadmin") return { bg: "#ffe4e6", fg: "#9f1239" };
-  if (r.startsWith("admin") || r === "admin") return { bg: "#fee2e2", fg: "#991b1b" };
-  if (r === "owner" || r === "dueño" || r === "dueno") return { bg: "#dbeafe", fg: "#1e40af" };
-  return { bg: "#dcfce7", fg: "#166534" };
-}
-function RoleBadge({ rol }: { rol?: string }) {
-  const label = getRoleLabel(rol);
-  const { bg, fg } = getRoleColors(rol);
-  return (
-    <View style={{ backgroundColor:bg, paddingHorizontal:10, paddingVertical:6, borderRadius:999, alignSelf:"flex-start" }}>
-      <Text style={{ color:fg, fontWeight:"800" }}>{label}</Text>
-    </View>
-  );
-}
-
-/* ========= Componente ========= */
+/* ========= Componente principal ========= */
 export default function PerfilScreen() {
   const { user, setUser, logout } = useAuth();
 
-  /* --- Me --- */
   const [loadingMe, setLoadingMe] = useState(true);
   const [errorMe, setErrorMe] = useState<string | null>(null);
 
@@ -245,14 +91,8 @@ export default function PerfilScreen() {
       try {
         setLoadingMe(true);
         setErrorMe(null);
-
         const me = await AuthAPI.me();
-
-        // Derivar rol desde `me` y/o JWT, e inyectarlo al store
-        const effectiveRol = await computeEffectiveRole(me);
-        const withRol = { ...me, rol: effectiveRol };
-
-        await setUser(withRol);
+        await setUser(me);
       } catch (e: any) {
         setErrorMe(e?.response?.data?.detail ?? "No se pudo cargar tu perfil.");
       } finally {
@@ -261,88 +101,24 @@ export default function PerfilScreen() {
     })();
   }, [setUser]);
 
-  /* --- Form usuario --- */
-  type FormUsuario = Omit<Usuario, "rol">;
-  const [form, setForm] = useState<FormUsuario>(() => ({
-    id_usuario:  user?.id_usuario ?? 0,
-    nombre:      user?.nombre ?? "",
-    apellido:    user?.apellido ?? "",
-    email:       user?.email ?? "",
-    telefono:    (user?.telefono as any) ?? "",
-    avatar_url:  user?.avatar_url ?? null,
-  }));
-  useEffect(() => {
-    if (user) {
-      setForm({
-        id_usuario: user.id_usuario,
-        nombre:     user.nombre ?? "",
-        apellido:   user.apellido ?? "",
-        email:      user.email ?? "",
-        telefono:   (user.telefono as any) ?? "",
-        avatar_url: user.avatar_url ?? null,
-      });
-    }
-  }, [user]);
-  const onChange = (k: keyof FormUsuario, v: string | null) =>
-    setForm(prev => ({ ...prev, [k]: v as any }));
+  const [form, setForm] = useState({
+    nombre: user?.nombre ?? "",
+    apellido: user?.apellido ?? "",
+    email: user?.email ?? "",
+    telefono: (user?.telefono as any) ?? "",
+  });
 
-  /* --- Confirmación guardar --- */
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const cambios = useMemo(() => {
-    if (!user) return [];
-    const diffs: { label: string; from?: string | null; to?: string | null }[] = [];
-    const push = (label:string, from:any, to:any) => {
-      const a = (from ?? "")?.toString?.() ?? "";
-      const b = (to ?? "")?.toString?.() ?? "";
-      if (a !== b) diffs.push({ label, from: a, to: b });
-    };
-    push("Nombre",   user.nombre,   form.nombre);
-    push("Apellido", user.apellido, form.apellido);
-    push("Correo",   user.email,    form.email);
-    push("Teléfono", user.telefono, form.telefono);
-    return diffs;
-  }, [user, form]);
-  const openConfirm = () => {
-    if (!cambios.length) { Alert.alert("Perfil", "No hay cambios para guardar"); return; }
-    setConfirmOpen(true);
-  };
+  const onChange = (k: string, v: string | null) => setForm((prev) => ({ ...prev, [k]: v as any }));
 
-  /* --- Guardar perfil --- */
-  const successAnim = useRef(new Animated.Value(0)).current;
-  const showSuccess = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    successAnim.setValue(0);
-    Animated.sequence([
-      Animated.timing(successAnim, { toValue: 1, duration: 250, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      Animated.delay(1100),
-      Animated.timing(successAnim, { toValue: 0, duration: 250, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-    ]).start();
-  };
-  const toastStyle = {
-    opacity: successAnim,
-    transform: [{
-      scale: successAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] })
-    }, {
-      translateY: successAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] })
-    }]
-  };
   const [saving, setSaving] = useState(false);
   const confirmAndSave = async () => {
     try {
-      setConfirmOpen(false);
-      Haptics.selectionAsync();
       setSaving(true);
-      const payload = {
-        nombre:     form.nombre,
-        apellido:   form.apellido,
-        telefono:   form.telefono ?? null,
-        email:      form.email,
-        avatar_url: form.avatar_url ?? null,
-      };
+      const payload = { ...form };
       const updated = await AuthAPI.updateMe(payload);
       const nextUser = updated && typeof updated === "object" ? { ...user!, ...updated } : { ...user!, ...payload };
       await setUser(nextUser);
-      showSuccess();
+      Alert.alert("Guardado", "Los cambios se guardaron correctamente");
     } catch (e: any) {
       const msg = e?.response?.data?.detail || e?.response?.data?.message || "No se pudieron guardar los cambios";
       Alert.alert("Error", msg);
@@ -351,7 +127,6 @@ export default function PerfilScreen() {
     }
   };
 
-  /* --- Mis reservas (reales) --- */
   const [resLoading, setResLoading] = useState(true);
   const [resError, setResError] = useState<string | null>(null);
   const [reservas, setReservas] = useState<ReservaUI[]>([]);
@@ -372,21 +147,19 @@ export default function PerfilScreen() {
     })();
   }, []);
 
-  const rawRole = (user as any)?.rol ?? (user as any)?.role;
-  const roleLabel = useMemo(() => getRoleLabel(rawRole), [rawRole]);
-
   if (loadingMe) {
     return (
-      <View style={{ flex:1, alignItems:"center", justifyContent:"center" }}>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator />
       </View>
     );
   }
+
   if (errorMe) {
     return (
-      <View style={{ flex:1, alignItems:"center", justifyContent:"center", padding:16 }}>
-        <Text style={{ color:"#b91c1c", textAlign:"center" }}>{errorMe}</Text>
-        <TouchableOpacity onPress={() => router.back()} style={[styles.btn, styles.btnNeutral, { marginTop:12, paddingHorizontal:16 }]}>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>
+        <Text style={{ color: "#b91c1c", textAlign: "center" }}>{errorMe}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={[styles.btn, styles.btnNeutral, { marginTop: 12 }]}>
           <Text style={styles.btnText}>Volver</Text>
         </TouchableOpacity>
       </View>
@@ -394,56 +167,51 @@ export default function PerfilScreen() {
   }
 
   return (
-    <View style={{ flex:1, backgroundColor:"#fff" }}>
+    <View style={{ flex: 1, backgroundColor: "#fff" }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 64 }}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} hitSlop={{ top:10, bottom:10, left:10, right:10 }}>
+          <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={26} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Perfil</Text>
-          <View style={{ width:26 }} />
+          <View style={{ width: 26 }} />
         </View>
-
-        {/* Rol */}
-        <Section title="Rol">
-          <View style={{ flexDirection:"row", alignItems:"center", justifyContent:"space-between" }}>
-            <View>
-              <Text style={{ fontWeight:"700" }}>Rol actual</Text>
-              <Text style={{ color:"#6b7280", marginTop:2 }}>{roleLabel}</Text>
-            </View>
-            <RoleBadge rol={rawRole} />
-          </View>
-
-          {/* Debug opcional (quitar en prod) */}
-          {/* <Text style={{ color:"#9ca3af", marginTop:6, fontSize:12 }}>
-            rol raw: {(user as any)?.rol ?? (user as any)?.role ?? "—"}
-          </Text> */}
-
-          <Text style={{ color:"#6b7280", marginTop:6 }}>
-            Los permisos en la app dependen de tu rol. Si necesitas cambiarlo, contáctate con un administrador.
-          </Text>
-        </Section>
 
         {/* Datos personales */}
         <Section title="Datos personales">
-          <Field label="Nombre"   value={form.nombre}   onChangeText={(v)=>onChange("nombre", v)} />
-          <Field label="Apellido" value={form.apellido} onChangeText={(v)=>onChange("apellido", v)} />
-          <Field label="Correo"   value={form.email ?? ""} keyboardType="email-address" autoCapitalize="none" onChangeText={(v)=>onChange("email", v)} />
-          <Field label="Teléfono" value={(form.telefono ?? "") as string} keyboardType="phone-pad" onChangeText={(v)=>onChange("telefono", v)} />
-          <TouchableOpacity onPress={openConfirm} disabled={saving} style={[styles.btn, styles.btnPrimary, saving && { opacity: 0.6 }]}>
+          <Field label="Nombre" value={form.nombre} onChangeText={(v) => onChange("nombre", v)} />
+          <Field label="Apellido" value={form.apellido} onChangeText={(v) => onChange("apellido", v)} />
+          <Field
+            label="Correo"
+            value={form.email ?? ""}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            onChangeText={(v) => onChange("email", v)}
+          />
+          <Field
+            label="Teléfono"
+            value={(form.telefono ?? "") as string}
+            keyboardType="phone-pad"
+            onChangeText={(v) => onChange("telefono", v)}
+          />
+          <TouchableOpacity
+            onPress={confirmAndSave}
+            disabled={saving}
+            style={[styles.btn, styles.btnPrimary, saving && { opacity: 0.6 }]}
+          >
             {saving ? <ActivityIndicator /> : <Text style={styles.btnText}>Guardar cambios</Text>}
           </TouchableOpacity>
         </Section>
 
-        {/* Mis reservas (reales) */}
+        {/* Mis reservas */}
         <Section title="Mis reservas">
           {resLoading ? (
             <ActivityIndicator />
           ) : resError ? (
-            <Text style={{ color:"#b91c1c" }}>{resError}</Text>
+            <Text style={{ color: "#b91c1c" }}>{resError}</Text>
           ) : reservas.length === 0 ? (
-            <Text style={{ color:"#6b7280" }}>Aún no tienes reservas.</Text>
+            <Text style={{ color: "#6b7280" }}>Aún no tienes reservas.</Text>
           ) : (
             <>
               {reservas.slice(0, 3).map((r) => (
@@ -461,77 +229,61 @@ export default function PerfilScreen() {
           )}
         </Section>
 
+        {/* 🔶 Nueva sección: Reseñas */}
+        <Section title="Reseñas">
+          <TouchableOpacity onPress={() => router.push("/(perfil)/mis-resenas")} style={styles.navRow}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Ionicons name="star-outline" size={18} color="#0f172a" />
+              <Text style={styles.navRowText}>Mis reseñas</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#0f172a" />
+          </TouchableOpacity>
+        </Section>
+
         {/* Sesión */}
         <Section title="Sesión">
           <TouchableOpacity
-            onPress={async ()=>{ try{ /* await AuthAPI.logout(); */ } catch{} await logout(); router.replace("/(auth)/login"); }}
+            onPress={async () => {
+              try { /* await AuthAPI.logout(); */ } catch {}
+              await logout();
+              router.replace("/(auth)/login");
+            }}
             style={[styles.btn, styles.btnDanger]}
           >
-            <Text style={[styles.btnText, { color:"white" }]}>Cerrar sesión</Text>
+            <Text style={[styles.btnText, { color: "white" }]}>Cerrar sesión</Text>
           </TouchableOpacity>
         </Section>
       </ScrollView>
-
-      {/* TOAST éxito */}
-      <Animated.View pointerEvents="none" style={[styles.toast, toastStyle]}>
-        <Ionicons name="checkmark-circle" size={22} color="#065f46" />
-        <Text style={{ color:"#065f46", fontWeight:"800" }}>¡Guardado!</Text>
-      </Animated.View>
-
-      {/* Modal confirmación */}
-      <Modal visible={confirmOpen} animationType="fade" transparent onRequestClose={() => setConfirmOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={{ fontSize:16, fontWeight:"800" }}>Confirmar cambios</Text>
-            <Text style={{ color:"#6b7280", marginTop:4 }}>Revisa y confirma los datos que vas a actualizar:</Text>
-            <View style={{ marginTop:12, gap:8 }}>
-              {cambios.length ? cambios.map((c, i) => (
-                <View key={i} style={styles.diffRow}>
-                  <Text style={styles.diffLabel}>{c.label}</Text>
-                  <View style={{ flexDirection:"row", alignItems:"center", gap:6 }}>
-                    <Text style={styles.diffFrom}>{c.from || "—"}</Text>
-                    <Ionicons name="arrow-forward" size={16} color="#64748b" />
-                    <Text style={styles.diffTo}>{c.to || "—"}</Text>
-                  </View>
-                </View>
-              )) : (
-                <Text style={{ color:"#6b7280" }}>No hay cambios</Text>
-              )}
-            </View>
-            <View style={{ flexDirection:"row", gap:8, marginTop:14 }}>
-              <TouchableOpacity onPress={() => setConfirmOpen(false)} style={[styles.btn, styles.btnNeutral, { flex:1 }]}>
-                <Text style={styles.btnText}>Revisar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={confirmAndSave} disabled={saving} style={[styles.btn, styles.btnPrimary, { flex:1 }, saving && { opacity: 0.6 }]}>
-                {saving ? <ActivityIndicator /> : <Text style={styles.btnText}>Confirmar y guardar</Text>}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
 
-/* ========= UI helpers ========= */
-function Section({ title, children }:{ title:string; children:React.ReactNode }) {
+/* ========= Subcomponentes ========= */
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View style={{ paddingHorizontal:16, marginTop:14 }}>
+    <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
       <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={{ gap:12, marginTop:8 }}>{children}</View>
+      <View style={{ gap: 12, marginTop: 8 }}>{children}</View>
     </View>
   );
 }
 
 function Field({
-  label, value, onChangeText, keyboardType, autoCapitalize
-}:{
-  label:string; value:string; onChangeText:(t:string)=>void;
-  keyboardType?:"default"|"email-address"|"phone-pad"; autoCapitalize?:"none"|"sentences"|"words"|"characters";
+  label,
+  value,
+  onChangeText,
+  keyboardType,
+  autoCapitalize,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (t: string) => void;
+  keyboardType?: "default" | "email-address" | "phone-pad";
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
 }) {
   return (
-    <View style={{ gap:6 }}>
-      <Text style={{ fontWeight:"600" }}>{label}</Text>
+    <View style={{ gap: 6 }}>
+      <Text style={{ fontWeight: "600" }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -544,30 +296,10 @@ function Field({
   );
 }
 
-function ReservaBadge({ status }:{ status:string }) {
-  const key = (status || "").toLowerCase();
-  const map: Record<string, { bg: string; fg: string; label: string }> = {
-    confirmed: { bg: "#dcfce7", fg: "#166534", label: "Confirmada" },
-    confirmada:{ bg: "#dcfce7", fg: "#166534", label: "Confirmada" },
-    pending:   { bg: "#fef9c3", fg: "#854d0e", label: "Pendiente"  },
-    pendiente: { bg: "#fef9c3", fg: "#854d0e", label: "Pendiente"  },
-    cancelled: { bg: "#fee2e2", fg: "#991b1b", label: "Cancelada"  },
-    cancelada: { bg: "#fee2e2", fg: "#991b1b", label: "Cancelada"  },
-  };
-  const sty = map[key] ?? { bg:"#e5e7eb", fg:"#374151", label: status || "—" };
-  return (
-    <View style={{ backgroundColor: sty.bg, paddingHorizontal:10, paddingVertical:6, borderRadius:999 }}>
-      <Text style={{ color:sty.fg, fontWeight:"700" }}>{sty.label}</Text>
-    </View>
-  );
-}
-
 function ReservaRow({ r }: { r: ReservaUI }) {
   const title =
     (r.cancha?.name ? `${r.cancha.name}` : "") +
     (r.venue?.name ? (r.cancha?.name ? " - " : "") + r.venue.name : r.cancha?.name ? "" : "Complejo");
-
-  const subtitle = formatFechaFila(r.date, r.startTime);
 
   return (
     <TouchableOpacity
@@ -590,66 +322,71 @@ function ReservaRow({ r }: { r: ReservaUI }) {
     >
       <View>
         <Text style={styles.itemTitle}>{title}</Text>
-        <Text style={styles.itemSub}>{subtitle}</Text>
+        <Text style={styles.itemSub}>{r.date}</Text>
       </View>
-      <ReservaBadge status={r.status} />
+      <Ionicons name="chevron-forward" size={20} color="#0f172a" />
     </TouchableOpacity>
   );
 }
 
-function formatFechaFila(fecha?: string, inicio?: string) {
-  if (!fecha) return "—";
-  try {
-    const d = new Date(`${fecha}T00:00:00`);
-    const dow = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(d);
-    const dayMon = new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(d);
-    return `${capitalize(dow)} ${inicio ? `${inicio}, ` : ""}${dayMon}`;
-  } catch {
-    return [inicio, fecha].filter(Boolean).join(", ");
-  }
-}
-function capitalize(s: string) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
-
-/* ========= estilos ========= */
+/* ========= Estilos ========= */
 const styles = StyleSheet.create({
-  header:{ paddingHorizontal:16, paddingTop:16, paddingBottom:6, flexDirection:"row", alignItems:"center", gap:12 },
-  headerTitle:{ fontSize:20, fontWeight:"800", flex:1, textAlign:"center" },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  headerTitle: { fontSize: 20, fontWeight: "800", flex: 1, textAlign: "center" },
 
-  sectionTitle:{ fontSize:16, fontWeight:"700" },
-  input:{ height:44, borderWidth:1, borderColor:"#e5e7eb", borderRadius:12, paddingHorizontal:14, backgroundColor:"#f9fafb" },
-
-  itemRow:{ flexDirection:"row", alignItems:"center", justifyContent:"space-between", borderWidth:1, borderColor:"#e5e7eb", backgroundColor:"#fff", borderRadius:12, padding:14 },
-  itemTitle:{ fontWeight:"700" },
-  itemSub:{ color:"#6b7280" },
-
-  btn:{ height:46, borderRadius:12, alignItems:"center", justifyContent:"center", marginTop:6 },
-  btnPrimary:{ backgroundColor:"#e0f2fe" },
-  btnDanger:{ backgroundColor:"#ef4444" },
-  btnNeutral:{ backgroundColor:"#f1f5f9" },
-  btnText:{ fontWeight:"700" },
-
-  // Toast de éxito
-  toast:{
-    position:"absolute",
-    left:16, right:16, bottom:16,
-    paddingVertical:10, paddingHorizontal:12,
-    borderRadius:12,
-    backgroundColor:"#ecfdf5",
-    borderWidth:1, borderColor:"#a7f3d0",
-    flexDirection:"row", alignItems:"center", gap:8,
-    shadowColor:"#000", shadowOpacity:0.08, shadowRadius:10, shadowOffset:{ width:0, height:4 },
-    elevation:2,
+  sectionTitle: { fontSize: 16, fontWeight: "700" },
+  input: {
+    height: 44,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#f9fafb",
   },
 
-  // Modal de confirmación
-  modalBackdrop:{ flex:1, backgroundColor:"rgba(0,0,0,0.32)", alignItems:"center", justifyContent:"center", padding:16 },
-  modalCard:{
-    width:"100%", maxWidth:420,
-    backgroundColor:"#fff", borderRadius:16, padding:16,
-    borderWidth:1, borderColor:"#e5e7eb"
+  itemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 14,
   },
-  diffRow:{ borderWidth:1, borderColor:"#e5e7eb", borderRadius:12, padding:10, backgroundColor:"#fafafa" },
-  diffLabel:{ fontWeight:"700", marginBottom:4 },
-  diffFrom:{ color:"#6b7280" },
-  diffTo:{ fontWeight:"700" },
+  itemTitle: { fontWeight: "700" },
+  itemSub: { color: "#6b7280" },
+
+  btn: {
+    height: 46,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 6,
+  },
+  btnPrimary: { backgroundColor: "#e0f2fe" },
+  btnDanger: { backgroundColor: "#ef4444" },
+  btnNeutral: { backgroundColor: "#f1f5f9" },
+  btnText: { fontWeight: "700" },
+
+  // Nueva sección navegación interna
+  navRow: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#ffffff",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+  },
+  navRowText: { fontWeight: "800", color: "#0f172a" },
 });

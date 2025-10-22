@@ -27,12 +27,16 @@ async function getToken() {
     if (Platform.OS === "web" && typeof window !== "undefined") {
       return (
         window.localStorage.getItem("token") ||
-        window.localStorage.getItem("accessToken")
+        window.localStorage.getItem("accessToken") ||
+        window.localStorage.getItem("jwt") ||
+        window.localStorage.getItem("access_token")
       );
     }
     return (
       (await SecureStore.getItemAsync("token")) ||
-      (await SecureStore.getItemAsync("accessToken"))
+      (await SecureStore.getItemAsync("accessToken")) ||
+      (await SecureStore.getItemAsync("jwt")) ||
+      (await SecureStore.getItemAsync("access_token"))
     );
   } catch {
     return null;
@@ -41,8 +45,7 @@ async function getToken() {
 
 async function postJSON<T>(path: string, body: any): Promise<T> {
   const token = await getToken();
-  const url = `${API_URL}${path}`;
-  const res = await fetch(url, {
+  const res = await fetch(`${API_URL}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -110,37 +113,6 @@ const htmlInputStyle: any = {
   outline: "none",
 };
 
-/* ====== Mapeo robusto de respuesta para navegar a reseña ====== */
-function extractReviewParams(created: any) {
-  const reservationId =
-    created?.id ?? created?.id_reserva ?? created?.reserva_id ?? created?.uuid ?? "";
-
-  // Si el backend devuelve fecha/hora separados:
-  const date =
-    created?.fecha_reserva ?? created?.fecha ?? (created?.inicio ? toYMD(new Date(created.inicio)) : "");
-  const startTime =
-    created?.hora_inicio ?? (created?.inicio ? new Date(created.inicio).toTimeString().slice(0, 5) : "");
-  const endTime =
-    created?.hora_fin ?? (created?.fin ? new Date(created.fin).toTimeString().slice(0, 5) : "");
-
-  const venueId =
-    created?.venue?.id ?? created?.complejo_id ?? created?.id_complejo ?? "";
-  const venueName =
-    created?.venue?.name ??
-    created?.complejo_nombre ??
-    created?.complejo?.nombre ??
-    "Complejo";
-
-  return {
-    reservationId: String(reservationId || ""),
-    venueId: String(venueId || ""),
-    venueName,
-    date,
-    startTime,
-    endTime,
-  };
-}
-
 /* ============== Pantalla ============== */
 export default function ReservarTab() {
   // /(tabs)/reservar?canchaId=123 (+ opcional date/start/end para prellenar)
@@ -156,39 +128,39 @@ export default function ReservarTab() {
   const [endTime, setEndTime] = useState(seedEnd);
   const [notes, setNotes] = useState<string>("");
 
-  // 🔐 Crea la reserva REAL según tu API: { id_cancha, fecha: 'YYYY-MM-DD', inicio: 'HH:mm', fin: 'HH:mm', notas? }
+  // tu API espera { fecha, inicio, fin, id_cancha, notas }
   const crear = useMutation({
     mutationFn: (payload: {
+      fecha: string;
+      inicio: string;
+      fin: string;
       id_cancha: number;
-      fecha: string;   // YYYY-MM-DD
-      inicio: string;  // HH:mm
-      fin: string;     // HH:mm
       notas?: string | null;
     }) => postJSON("/reservas", payload),
 
-    onSuccess: (created: any, vars) => {
-      const params = extractReviewParams(created);
+    // ✅ Ya NO navegamos a reseñas aquí. Solo volvemos a Mis reservas.
+    onSuccess: (_created: any, vars) => {
       const msg = `Reserva creada para el ${vars.fecha} de ${vars.inicio} a ${vars.fin}.`;
-
-      const goFallback = () => router.replace("/(reservar)/mis-reservas");
-      const goReview = () =>
-        router.replace({
-          pathname: "/(resena)/resena",
-          params, // reservationId, venueId, venueName, date, startTime, endTime
-        });
-
       if (Platform.OS === "web" && typeof window !== "undefined") {
         window.alert(msg);
-        params.reservationId ? goReview() : goFallback();
+        router.replace("/(reservar)/mis-reservas");
       } else {
         Alert.alert("¡Reserva creada!", msg, [
-          { text: "Reseñar ahora", onPress: params.reservationId ? goReview : goFallback },
+          { text: "Ver mis reservas", onPress: () => router.replace("/(reservar)/mis-reservas") },
         ]);
       }
     },
 
     onError: (e: any) => {
-      const errMsg = e?.message ?? "Intenta de nuevo.";
+      // intenta mostrar el detail del backend si vino como JSON en e.message
+      let errMsg = e?.message ?? "Intenta de nuevo.";
+      try {
+        const parsed = JSON.parse(errMsg);
+        errMsg = parsed?.detail || parsed?.message || errMsg;
+      } catch {
+        errMsg = errMsg.replace(/^"|"$/g, ""); // limpia comillas si vinieron
+      }
+
       if (Platform.OS === "web" && typeof window !== "undefined") {
         window.alert(`No se pudo crear la reserva.\n${errMsg}`);
       } else {
@@ -206,26 +178,26 @@ export default function ReservarTab() {
     }
 
     const fecha = toYMD(date);
-    const inicioHM = toHM(startTime); // HH:mm
-    const finHM = toHM(endTime);      // HH:mm
+    const inicio = toHM(startTime);
+    const fin = toHM(endTime);
 
     // Validación simple: fin > inicio
-    const startMillis = hmToMillis(inicioHM);
-    const endMillis = hmToMillis(finHM);
+    const startMillis = hmToMillis(inicio);
+    const endMillis = hmToMillis(fin);
     if (endMillis <= startMillis) {
       const msg = "La hora de término debe ser posterior a la hora de inicio.";
       if (Platform.OS === "web") window.alert(msg); else Alert.alert("Horario inválido", msg);
       return;
     }
 
-    const confirmMsg = `¿Deseas confirmar la reserva para el ${fecha} entre ${inicioHM} y ${finHM}?`;
+    const confirmMsg = `¿Deseas confirmar la reserva para el ${fecha} entre ${inicio} y ${fin}?`;
 
     const doPost = () =>
       crear.mutate({
+        fecha,
+        inicio,
+        fin,
         id_cancha: Number(canchaId),
-        fecha,           // 👈 requerido por tu backend
-        inicio: inicioHM, // 👈 HH:mm (solo hora)
-        fin: finHM,       // 👈 HH:mm (solo hora)
         notas: notes?.trim() ? notes.trim() : null,
       });
 
