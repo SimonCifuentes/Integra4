@@ -13,6 +13,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useCanchas } from "@/src/features/features/canchas/hooks";
 import ReservaModal from "@/src/components/ReservaModal";
+import { useQuery } from "@tanstack/react-query";
+import { http } from "@/src/services/http";
 
 const TEAL = "#0ea5a4";
 
@@ -29,25 +31,25 @@ type CanchaBE = {
   sector?: string;             // o comuna/barrio
 };
 
-function normalize(s?: string | number | null) {
-  if (s == null) return "";
-  return String(s)
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .trim();
+type SlotBE = { inicio: string; fin: string; etiqueta?: string; precio?: number | null };
+
+function toYMD(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
-
-// Intenta deducir deporte desde `deporte` o desde el prefijo de `tipo` (e.g., "Fútbol 7" -> "Futbol")
-function inferDeporte(item: CanchaBE): string {
-  const d = item.deporte;
-  if (d && normalize(d)) return d;
-
-  const t = item.tipo ?? "";
-  const firstWord = t.split(/\s+/)[0] ?? "";
-  return firstWord || "";
+function addDays(d: Date, n: number) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
 }
-
+function formatSlotLabel(s: SlotBE) {
+  if (s.etiqueta) return s.etiqueta;
+  const a = s.inicio.slice(11, 16);
+  const b = s.fin.slice(11, 16);
+  return `${a} - ${b}`;
+}
 function formatCLP(n?: number | null) {
   if (typeof n !== "number") return "";
   try {
@@ -57,29 +59,61 @@ function formatCLP(n?: number | null) {
   }
 }
 
+function normalize(s?: string | number | null) {
+  if (s == null) return "";
+  return String(s)
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
+}
+
+function inferDeporte(item: CanchaBE): string {
+  const d = item.deporte;
+  if (d && normalize(d)) return d;
+  const t = item.tipo ?? "";
+  const firstWord = t.split(/\s+/)[0] ?? "";
+  return firstWord || "";
+}
+
 export default function CanchasScreen() {
   const { data, isLoading, isError, refetch, isRefetching } = useCanchas({ page: 1, page_size: 20 });
 
-  // UI state (buscador + filtros)
   const [q, setQ] = useState("");
   const [fDeporte, setFDeporte] = useState<string | null>(null);
   const [fSector, setFSector] = useState<string | null>(null);
   const [fFecha, setFFecha] = useState<string | null>(null); // "Hoy" activa disponible_hoy
 
-  // Reserva modal state
+  // Slots inline
+  const [openSlotsId, setOpenSlotsId] = useState<number | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const fechaYMD = toYMD(selectedDate);
+
+  const useSlots = (id_cancha?: number, fecha?: string, slot_minutos = 60) =>
+    useQuery({
+      queryKey: ["slots", id_cancha, fecha, slot_minutos],
+      enabled: Number.isFinite(id_cancha) && !!fecha,
+      queryFn: async () => {
+        const { data } = await http.get("/disponibilidad", { params: { id_cancha, fecha, slot_minutos } });
+        const arr: SlotBE[] = Array.isArray(data) ? data : data?.data ?? data?.items ?? [];
+        return arr;
+      },
+    });
+
+  const { data: slots } = useSlots(openSlotsId ?? undefined, fechaYMD, 60);
+
+  // Reserva modal (lo conservamos por si lo usas en otro flujo)
   const [selectedCancha, setSelectedCancha] = useState<CanchaBE | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  // Normaliza items desde el backend
   const items: CanchaBE[] = (data?.items ?? []) as CanchaBE[];
 
-  // Catálogos dinámicos a partir de los datos
   const deportesOpciones = useMemo(() => {
     const set = new Set<string>();
     for (const it of items) {
       const dep = inferDeporte(it);
       const norm = normalize(dep);
-      if (norm) set.add(dep); // guardamos label original
+      if (norm) set.add(dep);
     }
     return Array.from(set).sort((a, b) => normalize(a).localeCompare(normalize(b)));
   }, [items]);
@@ -94,7 +128,6 @@ export default function CanchasScreen() {
     return Array.from(set).sort((a, b) => normalize(a).localeCompare(normalize(b)));
   }, [items]);
 
-  // Filtros/búsqueda (cliente) — AHORA FUNCIONAN con normalización y deducción
   const canchas = useMemo(() => {
     const qn = normalize(q);
     const depN = normalize(fDeporte ?? "");
@@ -106,7 +139,6 @@ export default function CanchasScreen() {
         const texto = normalize(
           `${c.nombre_complejo ?? ""} ${c.tipo ?? ""} ${c.deporte ?? ""} ${c.sector ?? ""} ${c.nombre ?? ""}`
         );
-
         const deporteItem = inferDeporte(c);
         const deporteN = normalize(deporteItem);
         const sectorN = normalize(c.sector ?? "");
@@ -121,34 +153,9 @@ export default function CanchasScreen() {
       .sort((a, b) => Number(b.disponible_hoy ?? 0) - Number(a.disponible_hoy ?? 0));
   }, [items, q, fDeporte, fSector, fFecha]);
 
-  // --- Reserva: abrir modal
-  const openReserva = (cancha: CanchaBE) => {
-    setSelectedCancha(cancha);
-    setModalVisible(true);
-  };
+  const toggleSlots = (id: number) => setOpenSlotsId((prev) => (prev === id ? null : id));
+  const gotoDay = (delta: number) => setSelectedDate((d) => addDays(d, delta));
 
-  // --- Reserva: submit (conecta tu POST real aquí)
-  const handleReservaSubmit = async (reservaData: {
-    fecha: string;
-    horaInicio: string;
-    horaFin: string;
-    canchaId?: string | number;
-  }) => {
-    const idCancha = reservaData.canchaId ?? selectedCancha?.id_cancha;
-
-    const payload = {
-      id_cancha: Number(idCancha),
-      inicio: `${reservaData.fecha}T${reservaData.horaInicio}:00`,
-      fin: `${reservaData.fecha}T${reservaData.horaFin}:00`,
-    };
-
-    console.log("POST /reservas payload:", payload);
-    // await http.post(R.reservas.create, payload);
-
-    setModalVisible(false);
-  };
-
-  // Header visual, buscador y filtros (estilo canchas-por-complejo)
   const listHeader = (
     <>
       <View style={styles.headerTop}>
@@ -174,13 +181,12 @@ export default function CanchasScreen() {
         </View>
       </View>
 
-      {/* Filtros (con opciones reales del dataset) */}
+      {/* Filtros */}
       <View style={styles.filtersRow}>
         <DropdownChip
           icon="football-outline"
           label={fDeporte ?? "Deporte"}
           onPress={() => {
-            // Cicla por las opciones detectadas + (limpiar)
             if (deportesOpciones.length === 0) return;
             if (!fDeporte) {
               setFDeporte(deportesOpciones[0]);
@@ -214,7 +220,6 @@ export default function CanchasScreen() {
           label={fFecha ?? "Fecha"}
           onPress={() => setFFecha(fFecha ? null : "Hoy")}
           active={!!fFecha}
-          // si está en "Hoy" muestra cuántas disponibles hoy
           count={fFecha ? canchas.filter(c => c.disponible_hoy).length : undefined}
         />
 
@@ -231,7 +236,6 @@ export default function CanchasScreen() {
         )}
       </View>
 
-      {/* Loading / Error */}
       {isLoading && (
         <View style={{ paddingVertical: 16, alignItems: "center" }}>
           <ActivityIndicator />
@@ -253,6 +257,8 @@ export default function CanchasScreen() {
 
   const renderItem = ({ item }: { item: CanchaBE }) => {
     const deporteUI = inferDeporte(item) || "—";
+    const isOpen = openSlotsId === item.id_cancha;
+
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -292,17 +298,60 @@ export default function CanchasScreen() {
 
           <TouchableOpacity
             style={styles.btnPrimary}
-            onPress={() =>
-              router.push({
-                pathname: "/(reservar)/reservar",
-                params: { canchaId: String(item.id_cancha) },
-              })
-            }
+            onPress={() => toggleSlots(item.id_cancha)}
           >
-            <Ionicons name="calendar-outline" size={16} color="#fff" />
-            <Text style={styles.btnPrimaryTxt}>Reservar</Text>
+            <Ionicons name="time-outline" size={16} color="#fff" />
+            <Text style={styles.btnPrimaryTxt}>{isOpen ? "Ocultar horarios" : "Ver horarios"}</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Panel de horarios inline */}
+        {isOpen && (
+          <View style={styles.slotsCard}>
+            <View style={styles.dayRow}>
+              <TouchableOpacity onPress={() => gotoDay(-1)} style={styles.dayBtn}>
+                <Ionicons name="chevron-back" size={18} color={TEAL} />
+              </TouchableOpacity>
+              <Text style={styles.dayLabel}>{fechaYMD}</Text>
+              <TouchableOpacity onPress={() => gotoDay(1)} style={styles.dayBtn}>
+                <Ionicons name="chevron-forward" size={18} color={TEAL} />
+              </TouchableOpacity>
+            </View>
+
+            {!slots ? (
+              <View style={{ paddingVertical: 8 }}>
+                <ActivityIndicator />
+              </View>
+            ) : slots.length === 0 ? (
+              <Text style={styles.muted}>No hay horarios disponibles para este día.</Text>
+            ) : (
+              <View style={styles.slotChipsRow}>
+                {slots.map((s, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={styles.slotChip}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(reservar)/reservar",
+                        params: {
+                          canchaId: String(item.id_cancha),
+                          date: fechaYMD,
+                          start: s.inicio.slice(11, 16),
+                          end: s.fin.slice(11, 16),
+                        },
+                      })
+                    }
+                  >
+                    <Text style={styles.slotChipTxt}>{formatSlotLabel(s)}</Text>
+                    {typeof s.precio === "number" && (
+                      <Text style={styles.slotChipPrice}>{formatCLP(s.precio)}</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -335,7 +384,7 @@ export default function CanchasScreen() {
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         cancha={selectedCancha as any}
-        onSubmit={handleReservaSubmit}
+        onSubmit={() => setModalVisible(false)}
       />
     </View>
   );
@@ -482,4 +531,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
+  // Slots inline
+  slotsCard: { marginTop: 10, borderTopWidth: 1, borderTopColor: "#e5e7eb", paddingTop: 10, gap: 8 },
+  dayRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  dayBtn: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#ecfeff", borderWidth: 1, borderColor: "#99f6e4" },
+  dayLabel: { fontWeight: "800", color: "#0f172a" },
+
+  slotChipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  slotChip: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#f9fafb" },
+  slotChipTxt: { fontWeight: "700", color: "#0f172a" },
+  slotChipPrice: { color: "#16a34a", marginTop: 2, fontWeight: "700", textAlign: "center" },
 });

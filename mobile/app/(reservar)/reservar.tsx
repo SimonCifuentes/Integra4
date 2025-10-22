@@ -61,6 +61,34 @@ async function postJSON<T>(path: string, body: any): Promise<T> {
   return txt ? JSON.parse(txt) : ({} as T);
 }
 
+/* ====== Quotes storage (web/local & SecureStore) ====== */
+type QuotesMap = Record<string, { total: number; at: number }>;
+
+async function loadQuotes(): Promise<QuotesMap> {
+  try {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const raw = window.localStorage.getItem("quotesMap");
+      return raw ? (JSON.parse(raw) as QuotesMap) : {};
+    }
+    const raw = await SecureStore.getItemAsync("quotesMap");
+    return raw ? (JSON.parse(raw) as QuotesMap) : {};
+  } catch {
+    return {};
+  }
+}
+async function saveQuotes(next: QuotesMap) {
+  const raw = JSON.stringify(next);
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.localStorage.setItem("quotesMap", raw);
+  } else {
+    await SecureStore.setItemAsync("quotesMap", raw);
+  }
+}
+
+function quoteKey(id_cancha: number | string, fecha: string, inicio: string, fin: string) {
+  return `quote:${id_cancha}:${fecha}:${inicio}-${fin}`;
+}
+
 /* ============== Inputs (web fallback) ============== */
 function DateField({ value, onChange }: { value: Date; onChange: (d: Date) => void }) {
   if (Platform.OS !== "web") {
@@ -114,6 +142,15 @@ const htmlInputStyle: any = {
 };
 
 /* ============== Pantalla ============== */
+type Cotizacion = {
+  precio_por_hora: number;
+  horas: number;
+  subtotal: number;
+  descuento?: number;
+  total: number;
+  promo_aplicada?: string | null;
+};
+
 export default function ReservarTab() {
   // /(tabs)/reservar?canchaId=123 (+ opcional date/start/end para prellenar)
   const { canchaId, date: dateParam, start: startParam, end: endParam } =
@@ -127,8 +164,10 @@ export default function ReservarTab() {
   const [startTime, setStartTime] = useState(seedStart);
   const [endTime, setEndTime] = useState(seedEnd);
   const [notes, setNotes] = useState<string>("");
+  const [cupon, setCupon] = useState<string>("");
+  const [quote, setQuote] = useState<Cotizacion | null>(null);
 
-  // tu API espera { fecha, inicio, fin, id_cancha, notas }
+  /* === Mutations === */
   const crear = useMutation({
     mutationFn: (payload: {
       fecha: string;
@@ -138,7 +177,6 @@ export default function ReservarTab() {
       notas?: string | null;
     }) => postJSON("/reservas", payload),
 
-    // ✅ Ya NO navegamos a reseñas aquí. Solo volvemos a Mis reservas.
     onSuccess: (_created: any, vars) => {
       const msg = `Reserva creada para el ${vars.fecha} de ${vars.inicio} a ${vars.fin}.`;
       if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -152,15 +190,13 @@ export default function ReservarTab() {
     },
 
     onError: (e: any) => {
-      // intenta mostrar el detail del backend si vino como JSON en e.message
       let errMsg = e?.message ?? "Intenta de nuevo.";
       try {
         const parsed = JSON.parse(errMsg);
         errMsg = parsed?.detail || parsed?.message || errMsg;
       } catch {
-        errMsg = errMsg.replace(/^"|"$/g, ""); // limpia comillas si vinieron
+        errMsg = errMsg.replace(/^"|"$/g, "");
       }
-
       if (Platform.OS === "web" && typeof window !== "undefined") {
         window.alert(`No se pudo crear la reserva.\n${errMsg}`);
       } else {
@@ -169,6 +205,36 @@ export default function ReservarTab() {
     },
   });
 
+  const cotizar = useMutation({
+    mutationFn: (payload: {
+      fecha: string;
+      inicio: string;
+      fin: string;
+      id_cancha: number;
+      cupon?: string | null;
+    }) => postJSON<Cotizacion>("/reservas/cotizar", payload),
+    onSuccess: async (resp, vars) => {
+      setQuote(resp);
+      // persistimos para que mis-reservas pueda mostrar el valor estimado si el backend aún no lo calcula
+      const key = quoteKey(vars.id_cancha, vars.fecha, vars.inicio, vars.fin);
+      const current = await loadQuotes();
+      current[key] = { total: resp.total, at: Date.now() };
+      await saveQuotes(current);
+    },
+    onError: (e: any) => {
+      let errMsg = e?.message ?? "Intenta nuevamente.";
+      try {
+        const parsed = JSON.parse(errMsg);
+        errMsg = parsed?.detail || parsed?.message || errMsg;
+      } catch {
+        errMsg = errMsg.replace(/^"|"$/g, "");
+      }
+      if (Platform.OS === "web") window.alert(errMsg);
+      else Alert.alert("No se pudo cotizar", errMsg);
+    },
+  });
+
+  /* === Actions === */
   const doConfirmar = () => {
     if (!canchaId) {
       const msg = "Falta información: no viene el id de la cancha.";
@@ -211,6 +277,33 @@ export default function ReservarTab() {
     }
   };
 
+  const doCotizar = () => {
+    if (!canchaId) {
+      const msg = "Falta el id de la cancha.";
+      if (Platform.OS === "web") window.alert(msg); else Alert.alert("Falta información", msg);
+      return;
+    }
+    const fecha = toYMD(date);
+    const inicio = toHM(startTime);
+    const fin = toHM(endTime);
+
+    // Validación simple igual que en confirmar
+    const startMillis = hmToMillis(inicio);
+    const endMillis = hmToMillis(fin);
+    if (endMillis <= startMillis) {
+      const msg = "La hora de término debe ser posterior a la hora de inicio.";
+      if (Platform.OS === "web") window.alert(msg); else Alert.alert("Horario inválido", msg);
+      return;
+    }
+    cotizar.mutate({
+      fecha,
+      inicio,
+      fin,
+      id_cancha: Number(canchaId),
+      cupon: cupon?.trim() ? cupon.trim() : null,
+    });
+  };
+
   const loading = crear.isPending;
 
   return (
@@ -236,6 +329,14 @@ export default function ReservarTab() {
         <Text style={styles.label}>Hora término</Text>
         <TimeField value={endTime} onChange={setEndTime} />
 
+        <Text style={styles.label}>Cupón (opcional)</Text>
+        <TextInput
+          value={cupon}
+          onChangeText={setCupon}
+          placeholder="Ej: CYBER-10"
+          style={styles.input}
+        />
+
         <Text style={styles.label}>Notas (opcional)</Text>
         <TextInput
           value={notes}
@@ -245,6 +346,41 @@ export default function ReservarTab() {
           multiline
           numberOfLines={3}
         />
+
+        {/* Cotizar */}
+        <TouchableOpacity
+          style={[styles.btnOutline, cotizar.isPending && { opacity: 0.6 }]}
+          onPress={doCotizar}
+          disabled={cotizar.isPending}
+        >
+          {cotizar.isPending ? (
+            <ActivityIndicator />
+          ) : (
+            <>
+              <Ionicons name="pricetag-outline" size={18} color={TEAL} />
+              <Text style={styles.btnOutlineText}>Cotizar</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* Resultado de la cotización */}
+        {quote && (
+          <View style={styles.quoteCard}>
+            <Text style={styles.quoteTitle}>Cotización</Text>
+            <Row label="Precio por hora" value={toCLP(quote.precio_por_hora)} />
+            <Row label="Horas" value={`${quote.horas}`} />
+            <Row label="Subtotal" value={toCLP(quote.subtotal)} />
+            {"descuento" in quote && typeof quote.descuento === "number" ? (
+              <Row label="Descuento" value={`- ${toCLP(quote.descuento)}`} />
+            ) : null}
+            <Row label="Total" value={toCLP(quote.total)} strong />
+            {quote.promo_aplicada ? (
+              <Text style={{ marginTop: 6, color: "#64748b" }}>
+                Promo aplicada: {quote.promo_aplicada}
+              </Text>
+            ) : null}
+          </View>
+        )}
 
         {/* Confirmar (crear reserva) */}
         <TouchableOpacity
@@ -266,7 +402,16 @@ export default function ReservarTab() {
   );
 }
 
-/* ============== helpers fecha/hora ============== */
+function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}>
+      <Text style={{ color: "#334155" }}>{label}</Text>
+      <Text style={{ fontWeight: strong ? "900" : "800" }}>{value}</Text>
+    </View>
+  );
+}
+
+/* ============== helpers fecha/hora/moneda ============== */
 function toYMD(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -282,6 +427,9 @@ function strToTodayTime(hm: string) {
 function hmToMillis(hm: string) {
   const [h, m] = hm.split(":").map((x) => parseInt(x, 10));
   return (h * 60 + m) * 60 * 1000;
+}
+function toCLP(n: number) {
+  return Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(n);
 }
 
 /* ============== estilos ============== */
@@ -299,6 +447,14 @@ const styles = StyleSheet.create({
   bold: { fontWeight: "900", color: "#0f172a" },
   body: { flex: 1, paddingHorizontal: 16, paddingTop: 12, gap: 6 },
   label: { fontWeight: "800", marginTop: 10, marginBottom: 6, color: "#0f172a" },
+  input: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#f9fafb",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 46,
+  },
   textarea: {
     borderWidth: 1,
     borderColor: "#e5e7eb",
@@ -308,6 +464,20 @@ const styles = StyleSheet.create({
     minHeight: 90,
     textAlignVertical: "top",
   },
+  btnOutline: {
+    backgroundColor: "#ecfeff",
+    borderColor: "#99f6e4",
+    borderWidth: 1,
+    height: 46,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 6,
+  },
+  btnOutlineText: { color: TEAL, fontWeight: "800" },
   btnPrimary: {
     backgroundColor: TEAL,
     height: 46,
@@ -320,4 +490,13 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   btnPrimaryText: { color: "#fff", fontWeight: "800" },
+  quoteCard: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    padding: 12,
+  },
+  quoteTitle: { fontWeight: "900", color: "#0f172a", marginBottom: 4, fontSize: 16 },
 });
