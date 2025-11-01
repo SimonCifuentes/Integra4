@@ -8,6 +8,18 @@ from sqlalchemy.orm import Session
 # =========================
 _SCHEMA_CACHE: Dict[str, Any] = {}
 
+def _has_postgis_loc(db: Session) -> bool:
+    q = text("""
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema='public'
+          AND table_name='complejos'
+          AND column_name='loc'
+        LIMIT 1
+    """)
+    return db.execute(q).first() is not None
+
+
 def _fetch_cols(db: Session, table: str) -> set[str]:
     q = text("""
         SELECT lower(column_name) FROM information_schema.columns
@@ -420,3 +432,183 @@ def resumen_basico(db: Session, id_complejo: int, desde: str, hasta: str) -> Dic
         "ingresos_confirmados": ingresos_confirmados,
         "ocupacion": round(ocupacion, 4),
     }
+
+def list_complejos(
+    db: Session,
+    params,           # ComplejosQuery
+    bounds: dict | None,
+    use_radius: bool,
+    offset: int,
+    limit: int,
+):
+    """
+    Esta es la versión nueva que soporta:
+    - bounds del mapa (priority alta)
+    - radio (lat/lon/max_km) si no hay bounds
+    - listado general si no hay ninguno de los dos
+
+    Devuelve (rows, total) donde rows son dicts compatibles con ComplejoOut.
+    """
+
+    info = _schema_info(db)
+
+    # ===== centro "de referencia" para calcular distancia_km =====
+    # Si hay bounds, usamos el centro del rectángulo visible.
+    # Si no hay bounds, usamos la lat/lon que venían en la query.
+    if bounds is not None:
+        center_lat = (bounds["north"] + bounds["south"]) / 2.0
+        center_lon = (bounds["east"]  + bounds["west"])  / 2.0
+    else:
+        center_lat = params.lat
+        center_lon = params.lon
+
+    # esto se usa dentro de _base_select(...) para calcular distancia_km
+    dist_calc_enabled = (center_lat is not None and center_lon is not None)
+
+    base_sql = _base_select(info, dist_calc=dist_calc_enabled)
+
+    # ===== joins dinámicos =====
+    joins = ""
+    wheres = ["c.activo = TRUE", "c.deleted_at IS NULL"]
+
+    # deporte: requiere que el complejo tenga al menos una cancha activa de ese deporte
+    if params.deporte:
+        joins += """
+            JOIN canchas ch ON ch.id_complejo = c.id_complejo
+               AND ch.activo = TRUE
+               AND ch.deleted_at IS NULL
+            JOIN deportes d ON d.id_deporte = ch.id_deporte
+        """
+        wheres.append("lower(d.nombre) = :deporte")
+
+    # ===== búsqueda por texto / comuna / id_comuna =====
+    comuna_expr = _comuna_for_where(info)
+
+    if params.q:
+        if comuna_expr:
+            wheres.append(
+                f"(lower(c.nombre) LIKE :q OR lower(c.direccion) LIKE :q OR lower({comuna_expr}) LIKE :q)"
+            )
+        else:
+            wheres.append(
+                "(lower(c.nombre) LIKE :q OR lower(c.direccion) LIKE :q)"
+            )
+
+    if params.comuna and comuna_expr:
+        wheres.append(f"lower({comuna_expr}) = :comuna")
+
+    if params.id_comuna is not None and info["has_id_comuna"]:
+        wheres.append("c.id_comuna = :id_comuna")
+
+    # ===== filtro espacial (bounds o radio) =====
+    # 1. Bounds del mapa (viewport)
+    if bounds is not None:
+        if info["has_loc"]:
+            wheres.append("""
+                ST_Within(
+                    c.loc,
+                    ST_MakeEnvelope(:west_bound, :south_bound, :east_bound, :north_bound, 4326)
+                )
+            """)
+        else:
+            wheres.append("""
+                c.latitud  BETWEEN :south_bound AND :north_bound
+                AND c.longitud BETWEEN :west_bound  AND :east_bound
+            """)
+
+    # 2. Radio en km (solo si NO hay bounds)
+    #    Nota: igual que en search_complejos, nosotros vamos a filtrar por distancia_km
+    #    DESPUÉS con un WHERE externo (distancia_km <= :max_km), en vez de hacerlo acá.
+    #    Peeero si quieres, puedes meter ST_DWithin aquí. Lo dejamos simple/consistente.
+    #    Entonces NO agregamos nada extra al WHERE base por 'use_radius' acá.
+
+    # ===== GROUP BY dinámico =====
+    group_by_cols = ["c.id_complejo"]
+    if info["has_id_comuna"] and info["comunas_exists"] and info["comunas_name_col"]:
+        group_by_cols.append(f"co.{info['comunas_name_col']}")
+
+    where_sql = " AND ".join(wheres)
+
+    # query base agregando joins, where y group by
+    sql_core = (
+        base_sql
+        + joins
+        + " WHERE "
+        + where_sql
+        + " GROUP BY "
+        + ", ".join(group_by_cols)
+    )
+
+    # ===== envolvemos en WITH base AS (...) para poder filtrar por distancia_km y paginar =====
+    # si estamos en modo radio, aplicamos max_km sobre distancia_km
+    if use_radius and params.max_km is not None and params.lat is not None and params.lon is not None:
+        sql_wrapped = f"""
+            WITH base AS (
+                {sql_core}
+            )
+            SELECT * FROM base
+            WHERE distancia_km <= :max_km
+        """
+    else:
+        sql_wrapped = f"""
+            WITH base AS (
+                {sql_core}
+            )
+            SELECT * FROM base
+        """
+
+    # ===== ORDER BY dinámico =====
+    ordermap = {
+        "distancia": "distancia_km NULLS LAST",
+        "rating": "rating_promedio NULLS LAST",
+        "nombre": "nombre",
+        "recientes": "id_complejo DESC",
+    }
+
+    sort_key = (params.sort_by or "nombre")
+    ob_expr = ordermap.get(sort_key, "nombre")
+    direction = "ASC" if (params.order or "").lower() == "asc" else "DESC"
+
+    sql_wrapped += f" ORDER BY {ob_expr} {direction}"
+
+    # Para count total, usamos el SELECT envuelto antes de LIMIT/OFFSET
+    count_sql = f"SELECT count(*) FROM ({sql_wrapped}) t"
+
+    # Finalmente aplicamos paginación
+    sql_wrapped += " LIMIT :limit OFFSET :offset"
+
+    # ====== parámetros ======
+    sql_params: Dict[str, Any] = {
+        # filtros básicos
+        "q": f"%{params.q.lower()}%" if params.q else None,
+        "comuna": params.comuna.lower() if params.comuna else None,
+        "id_comuna": params.id_comuna,
+        "deporte": params.deporte.lower() if params.deporte else None,
+
+        # centro para cálculo de distancia en _base_select()
+        "lat": center_lat,
+        "lon": center_lon,
+
+        # radio (para el WHERE distancia_km <= :max_km si aplica)
+        "max_km": float(params.max_km) if params.max_km is not None else None,
+
+        # paginación
+        "limit": limit,
+        "offset": offset,
+    }
+
+    # bounds si aplica
+    if bounds is not None:
+        sql_params.update({
+            "north_bound": bounds["north"],
+            "south_bound": bounds["south"],
+            "east_bound":  bounds["east"],
+            "west_bound":  bounds["west"],
+        })
+
+    # Ejecutar
+    total = db.execute(text(count_sql), sql_params).scalar_one()
+    rows = db.execute(text(sql_wrapped), sql_params).mappings().all()
+
+    return [dict(r) for r in rows], int(total)
+

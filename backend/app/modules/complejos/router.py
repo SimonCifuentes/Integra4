@@ -32,26 +32,95 @@ router = APIRouter(prefix="/complejos", tags=["complejos"])
     ),
     response_description="Listado paginado de complejos."
 )
+@router.get(
+    "",
+    response_model=ComplejosListOut,
+    summary="Listar complejos",
+    description=(
+        "Lista recintos con filtros: texto (`q`), `comuna` (nombre), `id_comuna` (FK), `deporte`, "
+        "y filtros espaciales. Soporta dos modos:\n\n"
+        "1) Radio cercano: (`lat`, `lon`, `max_km`).\n"
+        "2) Bounds visibles del mapa: (`ne_lat`, `ne_lon`, `sw_lat`, `sw_lon`).\n\n"
+        "Si se envían los bounds completos, tienen prioridad sobre el radio.\n\n"
+        "Orden por `distancia`, `rating`, `nombre` o `recientes`. Soporta paginación."
+    ),
+    response_description="Listado paginado de complejos."
+)
 def list_endpoint(
+    # --- filtros de texto / metadata ---
     q: str | None = Query(None, description="Búsqueda por nombre/dirección/comuna"),
     comuna: str | None = Query(None, description="Nombre exacto de la comuna"),
     id_comuna: int | None = Query(None, description="ID de comuna si tu esquema usa FK"),
-    deporte: str | None = Query(None),
+    deporte: str | None = Query(None, description="Ej: futbol, tenis..."),
+
+    # --- modo radio (cercanos clásicos) ---
     lat: float | None = Query(None, ge=-90, le=90),
     lon: float | None = Query(None, ge=-180, le=180),
     max_km: float | None = Query(None, gt=0),
-    sort_by: str | None = Query("nombre", pattern="^(distancia|rating|nombre|recientes)$"),
-    order: str | None = Query("asc", pattern="^(asc|desc)$"),
+
+    # --- 🔥 NUEVO: bounds del viewport del mapa ---
+    ne_lat: float | None = Query(
+        None, ge=-90, le=90,
+        description="Latitud esquina NOR-ESTE del mapa visible"
+    ),
+    ne_lon: float | None = Query(
+        None, ge=-180, le=180,
+        description="Longitud esquina NOR-ESTE del mapa visible"
+    ),
+    sw_lat: float | None = Query(
+        None, ge=-90, le=90,
+        description="Latitud esquina SUR-OESTE del mapa visible"
+    ),
+    sw_lon: float | None = Query(
+        None, ge=-180, le=180,
+        description="Longitud esquina SUR-OESTE del mapa visible"
+    ),
+
+    # --- orden / paginación ---
+    sort_by: str | None = Query(
+        "nombre",
+        pattern="^(distancia|rating|nombre|recientes)$"
+    ),
+    order: str | None = Query(
+        "asc",
+        pattern="^(asc|desc)$"
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+
     db: Session = Depends(get_db),
 ):
+    """
+    Retorna una lista paginada de complejos.
+    - Si mandas los 4 bounds (`ne_lat`, `ne_lon`, `sw_lat`, `sw_lon`), se filtra por el rectángulo visible.
+    - Si NO mandas bounds pero mandas (`lat`, `lon`, `max_km`), se filtra por radio en km.
+    - Si no mandas ni bounds ni radio, lista normal con otros filtros.
+    """
     params = ComplejosQuery(
-        q=q, comuna=comuna, id_comuna=id_comuna, deporte=deporte,
-        lat=lat, lon=lon, max_km=max_km,
-        sort_by=sort_by, order=order, page=page, page_size=page_size
+        q=q,
+        comuna=comuna,
+        id_comuna=id_comuna,
+        deporte=deporte,
+
+        # modo radio
+        lat=lat,
+        lon=lon,
+        max_km=max_km,
+
+        # modo bounds
+        ne_lat=ne_lat,
+        ne_lon=ne_lon,
+        sw_lat=sw_lat,
+        sw_lon=sw_lon,
+
+        sort_by=sort_by,
+        order=order,
+        page=page,
+        page_size=page_size,
     )
+
     return svc_list(db, params)
+
 
 @router.post(
     "",
