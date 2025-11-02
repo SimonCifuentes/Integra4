@@ -5,6 +5,17 @@ from app.shared.deps import get_db, require_roles
 from app.modules.auth.model import Usuario
 from app.modules.usuarios.repository import get_by_id, set_user_role
 from .schemas import SetRolIn, DemoteRolIn
+from typing import Annotated, Optional, List
+from fastapi import APIRouter, Depends, Query, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.shared.deps import get_db, require_roles
+from app.modules.auth.model import Usuario
+from .schemas import AdminMeOut, ComplejoMiniOut
+from app.modules.admin.service import AdminService 
+from app.modules.admin.schemas import AdminItem, AdminSearchOut
+from app.modules.admin.repository import search_admins
+
 
 router = APIRouter(tags=["admin"])  # prefix="/admin" lo pones en api/v1/router.py
 
@@ -124,3 +135,60 @@ def demote_role(
     set_user_role(db, target, payload.rol)
     db.commit()
     return {"detail": f"Rol actualizado a {payload.rol}"}
+
+@router.get(
+    "/me",
+    response_model=AdminMeOut,
+    summary="Obtiene mi id y rol (admin/dueno/superadmin)",
+    description="Devuelve id_usuario, rol, email y nombre del usuario autenticado con rol admin/dueno/superadmin.",
+)
+def admin_me(
+    user: Usuario = Depends(require_roles("admin", "dueno", "superadmin"))
+):
+    return AdminMeOut(
+        id_usuario=user.id_usuario,
+        rol=user.rol,
+        email=user.email,
+        nombre=user.nombre,
+        apellido=user.apellido,
+    )
+
+@router.get(
+    "/mis-complejos",
+    response_model=List[ComplejoMiniOut],
+    summary="Lista complejos asociados a mi usuario",
+    description=(
+        "Retorna los complejos donde soy dueño (id_dueno = mi id). "
+        "Si eres superadmin, puedes pasar ?id_usuario=<id> para consultar por otro usuario."
+    ),
+)
+def mis_complejos(
+    id_usuario: Annotated[Optional[int], Query(description="Solo superadmin: consultar por otro usuario")] = None,
+    user: Usuario = Depends(require_roles("admin", "dueno", "superadmin")),
+    db: Session = Depends(get_db),
+):
+    # superadmin puede inspeccionar a otro usuario
+    target_user_id = id_usuario if (id_usuario and user.rol == "superadmin") else user.id_usuario
+    # si pasó id_usuario pero no es superadmin, error
+    if id_usuario and user.rol != "superadmin":
+        raise HTTPException(status_code=403, detail="Solo superadmin puede consultar por otro usuario.")
+
+    return AdminService.complejos_por_dueno(db, user_id=target_user_id)
+
+@router.get(
+    "/admins",
+    response_model=AdminSearchOut,
+    summary="(PÚBLICO) Buscar admins/dueños y obtener sus IDs",
+    description=(
+        "Endpoint público para listar usuarios con rol 'admin' o 'dueno'. "
+        "Permite filtrar por nombre, apellido o email; incluye paginación."
+    ),
+)
+def public_search_admins(
+    q: Annotated[Optional[str], Query(description="Texto a buscar en nombre, apellido o email")] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    db: Session = Depends(get_db),
+):
+    items, total = search_admins(db, q=q, page=page, page_size=page_size)
+    return AdminSearchOut(items=items, total=total, page=page, page_size=page_size)
