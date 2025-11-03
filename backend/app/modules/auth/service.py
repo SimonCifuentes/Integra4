@@ -10,17 +10,15 @@ from typing import Optional
 from fastapi import HTTPException, status
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
-from app.modules.auth.repository import AuthRepository
+
 from app.core.security import hash_password, verify_password, create_access_token
 from app.modules.auth import repository as repo
-from app.modules.auth.schemas import GoogleAuthPayload
 from app.modules.auth.model import Usuario
-from app.modules.auth.utils import create_access_token  # ← ahora existe
 from app.modules.auth.schemas import (
     UserCreate, UserLogin, UserPublic, TokenOut, UserUpdate, map_role_db_to_public,
     AccessTokenOnly, RefreshIn, LogoutIn, SimpleMsg,
     VerifyEmailIn, ResendVerificationIn, ForgotPasswordIn, ResetPasswordIn,
-    ChangePasswordIn, PushTokenIn,
+    ChangePasswordIn, PushTokenIn
 )
 
 # =========================
@@ -379,68 +377,3 @@ def register_verify_stateless(db: Session, body, ip: Optional[str]) -> TokenOut:
             rol=map_role_db_to_public(usuario.rol),
         ),
     )
-def _map_user(u: Usuario) -> dict:
-    return {
-        "id_usuario": u.id_usuario,
-        "nombre": u.nombre,
-        "apellido": u.apellido,
-        "email": u.email,
-        "rol": u.rol,
-        "verificado": u.verificado,
-        "google_id": u.google_id,
-        "avatar_url": u.avatar_url,
-        "esta_activo": u.esta_activo,
-    }
-
-class Service:
-    @staticmethod
-    def google_login(db: Session, payload: GoogleAuthPayload):
-        repo = AuthRepository(db)
-        try:
-            # 1) buscar por google_id
-            user = repo.find_by_google_id(payload.google_id)
-            if user:
-                changed = False
-                if payload.avatar_url and user.avatar_url != payload.avatar_url:
-                    user.avatar_url = payload.avatar_url
-                    changed = True
-                if not user.verificado:
-                    user.verificado = True
-                    changed = True
-                if changed:
-                    db.commit(); db.refresh(user)
-                token = create_access_token(user.id_usuario)
-                return {"access_token": token, "token_type": "bearer", "user": _map_user(user)}
-
-            # 2) buscar por email y vincular
-            user = repo.find_by_email(payload.email)
-            if user:
-                user.google_id = payload.google_id
-                if payload.avatar_url:
-                    user.avatar_url = payload.avatar_url
-                user.verificado = True
-                db.commit(); db.refresh(user)
-                token = create_access_token(user.id_usuario)
-                return {"access_token": token, "token_type": "bearer", "user": _map_user(user)}
-
-            # 3) crear nuevo
-            new_user = repo.create_user(
-                nombre=payload.nombre,
-                apellido=payload.apellido,
-                email=payload.email,
-                hashed_password=None,
-                telefono=None,
-                google_id=payload.google_id,
-                avatar_url=payload.avatar_url,
-                verificado=True,
-                rol="usuario",
-            )
-            token = create_access_token(new_user.id_usuario)
-            return {"access_token": token, "token_type": "bearer", "user": _map_user(new_user)}
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                detail=f"Error al procesar autenticación de Google: {e}")
