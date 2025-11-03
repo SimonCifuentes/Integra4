@@ -100,3 +100,25 @@ class VerifyEmailWithTokenIn(BaseModel):
     code: str = Field(min_length=4, max_length=12)
     action_token: str = Field(min_length=20)
 
+class GoogleAuthPayload(BaseModel):
+    """
+    Datos que envía el BFF tras validar el ID Token de Google (sub/email verificados).
+    """
+    provider: str = Field(..., example="google", description="Proveedor OAuth (siempre 'google')")
+    google_id: str = Field(..., description="Google User ID (claim 'sub')")
+    email: EmailStr = Field(..., description="Email verificado por Google")
+    nombre: str = Field(..., min_length=1, max_length=100)
+    apellido: str = Field(..., min_length=1, max_length=100)
+    avatar_url: Optional[str] = Field(None, description="URL de la foto de perfil")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "provider": "google",
+                "google_id": "107936413502749530123",
+                "email": "usuario@gmail.com",
+                "nombre": "Juan",
+                "apellido": "Pérez",
+                "avatar_url": "https://lh3.googleusercontent.com/a/ACg8ocK..."
+            }
+        }

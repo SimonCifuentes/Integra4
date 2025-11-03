@@ -1,12 +1,15 @@
-from fastapi import APIRouter, Depends, Request 
+from fastapi import APIRouter, Depends, Request, Body
 from sqlalchemy.orm import Session
 
 from app.shared.deps import get_db, get_current_user
+from app.modules.auth.schemas import GoogleAuthPayload
+from app.modules.auth.service import Service as AuthService  # ← clase Service
+
 from app.modules.auth.schemas import (
     UserCreate, UserLogin, TokenOut, UserPublic, UserUpdate,
     AccessTokenOnly, RefreshIn, LogoutIn, SimpleMsg,
     VerifyEmailIn, ResendVerificationIn, ForgotPasswordIn, ResetPasswordIn,
-    ChangePasswordIn, PushTokenIn, UserCreate, TokenOut, RegisterInitOut, VerifyEmailWithTokenIn
+    ChangePasswordIn, PushTokenIn, UserCreate, TokenOut, RegisterInitOut, VerifyEmailWithTokenIn, GoogleAuthPayload
 )
 from app.modules.auth.service import (
     register as svc_register,
@@ -31,6 +34,13 @@ from app.modules.auth.model import Usuario
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ----- Pre-registro stateless -----
+
+@router.post("/google/login", summary="Login/Registro con Google (BFF verified)")
+def google_login_endpoint(
+    payload: GoogleAuthPayload = Body(...),
+    db: Session = Depends(get_db),
+):
+    return AuthService.google_login(db, payload)
 
 @router.post(
     "/register/init",

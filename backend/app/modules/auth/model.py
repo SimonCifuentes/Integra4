@@ -13,12 +13,14 @@ class Usuario(Base):
     apellido: Mapped[Optional[str]] = mapped_column(String(120))
     email: Mapped[str] = mapped_column(String(160), unique=True, index=True, nullable=False)
     telefono: Mapped[Optional[str]] = mapped_column(String(30))
-    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    hashed_password: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # ← ahora permite NULL
     rol: Mapped[str] = mapped_column(String(20), default="usuario", nullable=False)
     esta_activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     verificado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    avatar_url: Mapped[Optional[str]] = mapped_column(String(512))
-    google_id: Mapped[Optional[str]] = mapped_column(String(120))
+
+    # NUEVOS / ASEGURAR QUE EXISTAN:
+    google_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True, nullable=True)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
