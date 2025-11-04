@@ -137,3 +137,33 @@ def save_push_token(db: Session, user: Usuario, token: str, platform: Optional[s
         db.add(user)
         db.commit()
         db.refresh(user)
+class AuthRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    # --- NUEVO: buscar por google_id
+    def find_by_google_id(self, google_id: str) -> Optional[Usuario]:
+        return self.db.query(Usuario).filter(Usuario.google_id == google_id).first()
+
+    # --- NUEVO: buscar por email
+    def find_by_email(self, email: str) -> Optional[Usuario]:
+        return self.db.query(Usuario).filter(Usuario.email == email).first()
+
+    # --- NUEVO: crear usuario social (sin password)
+    def create_user_google(self, *, nombre: str, apellido: str, email: str,
+                           google_id: str, avatar_url: Optional[str]) -> Usuario:
+        user = Usuario(
+            nombre=nombre,
+            apellido=apellido,
+            email=email,
+            hashed_password=None,   # <- tu columna exacta
+            rol="usuario",          # enum rol_usuario con default también está ok
+            esta_activo=True,
+            verificado=True,
+            google_id=google_id,
+            avatar_url=avatar_url
+        )
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+        return user

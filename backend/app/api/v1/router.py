@@ -21,7 +21,7 @@ from app.modules.nearby.router import router as nearby
 from app.modules.disponibilidad.router import router as disponibilidad
 from app.modules.bloqueos.router import router as bloqueos
 from app.modules.horarios.router import router as horarios
-
+from app.modules.auth.router_google import router as auth_google_router
 
 
 api_router = APIRouter()
@@ -44,6 +44,7 @@ api_router.include_router(nearby)
 api_router.include_router(disponibilidad)
 api_router.include_router(bloqueos)
 api_router.include_router(horarios)
+api_router.include_router(auth_google_router)
 
 # Para estos dos, si dentro NO tienen prefix, mantenlos con prefix aquí:
 api_router.include_router(admin, prefix="/admin")

@@ -100,3 +100,10 @@ class VerifyEmailWithTokenIn(BaseModel):
     code: str = Field(min_length=4, max_length=12)
     action_token: str = Field(min_length=20)
 
+class GoogleAuthPayload(BaseModel):
+    provider: str = Field(..., pattern="^google$", description="Siempre 'google'")
+    google_id: str = Field(..., min_length=3, description="Claim 'sub' del JWT de Google (verificado por BFF)")
+    email: EmailStr
+    nombre: str = Field(..., min_length=1, max_length=120)
+    apellido: str = Field(..., min_length=1, max_length=120)
+    avatar_url: Optional[str] = Field(None, description="Foto de perfil")
