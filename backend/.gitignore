@@ -31,7 +31,6 @@ db.sqlite3
 
 # Subidas locales en modo dev (ajústalo a tu ruta)
 uploads/
-media/
 tmp/
 .cache/
 
