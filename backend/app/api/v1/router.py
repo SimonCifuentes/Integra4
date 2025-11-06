@@ -22,7 +22,7 @@ from app.modules.disponibilidad.router import router as disponibilidad
 from app.modules.bloqueos.router import router as bloqueos
 from app.modules.horarios.router import router as horarios
 from app.modules.auth.router_google import router as auth_google_router
-
+from app.modules.media.router import router as media_router
 
 api_router = APIRouter()
 # Si cada router YA tiene prefix, no pongas prefix aquí:
@@ -45,6 +45,8 @@ api_router.include_router(disponibilidad)
 api_router.include_router(bloqueos)
 api_router.include_router(horarios)
 api_router.include_router(auth_google_router)
+api_router.include_router(media_router)
+
 
 # Para estos dos, si dentro NO tienen prefix, mantenlos con prefix aquí:
 api_router.include_router(admin, prefix="/admin")
