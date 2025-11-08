@@ -20,6 +20,7 @@ from app.modules.uploads.router import router as uploads
 
 # 👇 NUEVO
 from app.modules.cotizaciones.router import router as cotizaciones
+from app.modules.contrato.router import router as contrato  # ⬅️ NUEVO
 
 api_router = APIRouter()
 
@@ -37,6 +38,7 @@ api_router.include_router(grupos)
 api_router.include_router(favoritos)
 api_router.include_router(denuncias)
 api_router.include_router(uploads)
+api_router.include_router(contrato)  # ⬅️ NUEVO
 
 # 👇 NUEVO
 api_router.include_router(cotizaciones)
