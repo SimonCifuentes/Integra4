@@ -63,6 +63,7 @@ class Service:
         return repo.list_resenas(db, id_cancha, id_complejo, order, page, page_size)
 
     # -------------------- crear --------------------
+    # -------------------- crear --------------------
     @staticmethod
     def crear(db: Session, *, user_id: int, body: ResenaCreateIn):
         """
@@ -72,11 +73,18 @@ class Service:
         """
         id_cancha, id_complejo = Service._normalize_ids(body.id_cancha, body.id_complejo)
 
+        # 👉 1) Validaciones de destino
         if not id_cancha and not id_complejo:
-            raise ValueError("Debe indicar id_cancha o id_complejo.")
-        # (Opcional) Si quieres forzar XOR (solo uno de los dos), descomenta:
-        # if id_cancha and id_complejo:
-        #     raise ValueError("Indica solo id_cancha o solo id_complejo, no ambos.")
+            # ni cancha ni complejo
+            raise ValueError("Debes indicar id_cancha o id_complejo.")
+
+        # 👉 2) SOLO uno de los dos (XOR)
+        if id_cancha and id_complejo:
+            # ambos a la vez → mensaje claro
+            raise ValueError(
+                "Solo puedes asociar la reseña a UN destino: "
+                "indica id_cancha O id_complejo, pero no ambos."
+            )
 
         # Estado confirmado (soporta enum o varchar en es/en)
         estado_confirmado = "r.estado::text IN ('confirmada','confirmed')"
@@ -105,7 +113,9 @@ class Service:
 
         if not db.execute(text(sql), params).first():
             # Mensaje claro si no hay reserva confirmada para ese destino
-            raise PermissionError("Sólo puedes reseñar si tienes una reserva confirmada para este destino.")
+            raise PermissionError(
+                "Sólo puedes reseñar si tienes una reserva confirmada para este destino."
+            )
 
         # Insertar reseña (repository mapea calificacion -> puntuacion)
         return repo.insert_resena(
@@ -116,6 +126,7 @@ class Service:
             calificacion=body.calificacion,
             comentario=body.comentario,
         )
+
     # -------------------- editar -------------------
     @staticmethod
     def editar(db: Session, *, user_id: int, id_resena: int, body: ResenaUpdateIn):

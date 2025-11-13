@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
-
+from app.modules.notificaciones.service import NotificacionesService
 from .model import Reserva
 
 # ------------------------
@@ -84,6 +84,13 @@ class Service:
         db.add(r)
         db.commit()
         db.refresh(r)
+        # 🔔 AQUÍ: notificar al usuario que se creó la reserva
+        try:
+            NotificacionesService.notificar_reserva_creada(db, r.id_reserva)
+        except Exception as e:
+            # No botamos la reserva si falla el mail, solo lo logueamos
+            print(f"[WARN] Error enviando notificación de reserva creada: {e}")
+
         return _to_out(r)
 
     # --------- Editar ----------
@@ -173,6 +180,11 @@ class Service:
             raise HTTPException(status_code=404, detail="Reserva no encontrada")
         r.estado = "confirmada"
         db.commit(); db.refresh(r)
+                # 🔔 Notificar al usuario que su reserva fue confirmada
+        try:
+            NotificacionesService.notificar_reserva_confirmada(db, r.id_reserva)
+        except Exception as e:
+            print(f"[WARN] Error enviando notificación de reserva confirmada: {e}")
         return _to_out(r)
 
     @staticmethod

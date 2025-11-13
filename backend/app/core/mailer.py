@@ -108,3 +108,22 @@ def send_reset_code(to: str, code: str, minutes: int) -> None:
     </div>
     """
     send_email(to, subject, text, html)
+
+def send_notification(to: str, subject: str, body: str) -> None:
+    """
+    Notificación genérica (reservas, promociones, avisos del sistema, etc.).
+    Reutiliza la infraestructura de send_email.
+    """
+    text = (
+        "Hola,\n\n"
+        f"{body}\n\n"
+        "Equipo SportHub Temuco"
+    )
+    html = f"""
+    <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.5">
+      <p>Hola,</p>
+      <p>{body}</p>
+      <p>Equipo <strong>SportHub Temuco</strong></p>
+    </div>
+    """
+    send_email(to, subject, text, html)
