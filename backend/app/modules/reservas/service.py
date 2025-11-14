@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.modules.notificaciones.service import NotificacionesService
 from .model import Reserva
+from sqlalchemy.exc import IntegrityError
+
 
 # ------------------------
 # Config
@@ -82,16 +84,41 @@ class Service:
             notas=data.get("notas"),
         )
         db.add(r)
-        db.commit()
+
+        try:
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            msg = str(e.orig)
+
+            # choque de horario
+            if "excl_reservas_solapadas" in msg:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La cancha ya tiene una reserva en ese horario.",
+                )
+
+            # fk de usuario inexistente
+            if "reservas_id_usuario_fkey" in msg:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El usuario indicado no existe o fue eliminado.",
+                )
+
+            # cualquier otro error de integridad: lo re-lanzamos
+            raise
+
         db.refresh(r)
-        # 🔔 AQUÍ: notificar al usuario que se creó la reserva
+
+        # 🔔 Notificación
         try:
             NotificacionesService.notificar_reserva_creada(db, r.id_reserva)
         except Exception as e:
-            # No botamos la reserva si falla el mail, solo lo logueamos
             print(f"[WARN] Error enviando notificación de reserva creada: {e}")
 
         return _to_out(r)
+
+
 
     # --------- Editar ----------
     @staticmethod

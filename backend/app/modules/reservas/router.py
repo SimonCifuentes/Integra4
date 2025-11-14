@@ -107,7 +107,7 @@ def reservas_por_usuario(
                         "fin": "2025-10-22T19:00:00-03:00",
                         "estado": "pendiente",
                         "precio_total": 12000.0,
-                        "notas": None
+                        "notas": None,
                     }
                 }
             },
@@ -115,19 +115,42 @@ def reservas_por_usuario(
         400: {"description": "Validación / sin disponibilidad"},
         401: {"description": "No autenticado"},
         403: {"description": "No autorizado"},
+        404: {"description": "Usuario destino no existe"},
     },
 )
 def crear_reserva_admin(
     payload: ReservaCreateIn,
+    id_usuario: int | None = Query(
+        default=None,
+        description=(
+            "ID del usuario al que se le asignará la reserva. "
+            "Si se omite, se usa el usuario autenticado (admin/superadmin)."
+        ),
+        gt=0,
+    ),
     db: Session = Depends(get_db),
     current: Usuario = Depends(get_current_user),
 ):
     if current.rol not in ("admin", "superadmin"):
         raise HTTPException(status_code=403, detail="No autorizado")
+
+    # --- Determinar dueño de la reserva ---
+    if id_usuario is not None:
+        # validar que el usuario exista
+        owner = db.get(Usuario, id_usuario)
+        if not owner:
+            raise HTTPException(
+                status_code=404,
+                detail="El usuario destino no existe",
+            )
+        id_duenio_reserva = owner.id_usuario
+    else:
+        # si no mandan id_usuario, usamos el propio admin
+        id_duenio_reserva = current.id_usuario
+
     data = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
-    return Service.crear(db, data, user_id=current.id_usuario)
 
-
+    return Service.crear(db, data, user_id=id_duenio_reserva)
 @admin.post(
     "/{id_reserva:int}/cancelar",
     response_model=ReservaOut,
