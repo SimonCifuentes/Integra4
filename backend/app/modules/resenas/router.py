@@ -109,6 +109,33 @@ def crear_resena(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /resenas/{id_resena}
+# Devuelve el detalle completo de una reseña específica.
+# No requiere autenticación.
+# ─────────────────────────────────────────────────────────────────────────────
+@router.get(
+    "/{id_resena}",
+    response_model=ResenaOut,
+    summary="Obtiene el detalle de una reseña",
+    description="Devuelve todos los datos de una reseña a partir de su ID.",
+    operation_id="getResena",
+    responses={
+        200: {"description": "Reseña encontrada"},
+        404: {"description": "Reseña no encontrada"},
+    },
+)
+def obtener_resena(
+    id_resena: Annotated[int, Path(description="ID de la reseña a consultar")],
+    db: Session = Depends(get_db),
+):
+    res = Service.obtener(db, id_resena=id_resena)
+    if not res:
+        raise HTTPException(status_code=404, detail="Reseña no encontrada")
+    return res
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PATCH /resenas/{id_resena}
 # Edita una reseña existente, pero únicamente si el solicitante es su autor.

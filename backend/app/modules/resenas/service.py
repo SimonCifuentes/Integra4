@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.core.config import settings  # <— IMPORTANTE
 
-from .schemas import ResenaCreateIn, ResenaUpdateIn
+from .schemas import ResenaCreateIn, ResenaUpdateIn, ResenaOut
 from . import repository as repo
 
 
@@ -173,3 +173,17 @@ class Service:
         if not repo.get_resena(db, id_resena):
             raise ValueError("La reseña no existe.")
         return repo.insert_reporte(db, id_resena=id_resena, id_reportante=user_id, motivo=motivo)
+
+        # -------------------- obtener una --------------------
+    @staticmethod
+    def obtener(db: Session, id_resena: int) -> ResenaOut | None:
+        """
+        Devuelve una reseña como dict (con la misma forma que ResenaOut)
+        o None si no existe.
+        """
+        row = repo.get_resena(db, id_resena)
+        if not row:
+            return None
+        # row ya tiene las claves que espera ResenaOut
+        # (promedio_rating y total_resenas quedarán en None)
+        return ResenaOut(**row)
