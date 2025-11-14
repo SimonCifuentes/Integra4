@@ -1,13 +1,16 @@
-from pydantic import BaseModel, Field, HttpUrl
+# app/modules/media/schemas.py
 from typing import Optional, Literal, Any
+from pydantic import BaseModel, Field, HttpUrl
 
 MediaTarget = Literal["perfil", "cancha", "complejo"]
+
 
 class MediaCreateIn(BaseModel):
     target: MediaTarget
     target_id: int = Field(..., ge=1)
     es_principal: bool = False
     orden: int = 0
+
 
 class MediaOut(BaseModel):
     id_media: int
@@ -22,12 +25,15 @@ class MediaOut(BaseModel):
     orden: int
     metadata: Optional[dict[str, Any]] = None
 
+
 class MediaListOut(BaseModel):
     items: list[MediaOut]
+
 
 class ReorderIn(BaseModel):
     id_media: int
     orden: int
+
 
 class SetPrincipalOut(BaseModel):
     ok: bool

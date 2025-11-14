@@ -3,11 +3,13 @@ from typing import Optional, Sequence
 from sqlalchemy.orm import Session
 from sqlalchemy import Table, MetaData, select, update, delete
 from sqlalchemy.engine import Engine
+
 from app.modules.media.schemas import MediaTarget
 
 # Cache de tablas por Engine (soporta múltiples conexiones)
 _METADATA = MetaData()
 _MEDIOS_BY_ENGINE: dict[int, Table] = {}
+
 
 def _table(db: Session) -> Table:
     eng: Engine = db.get_bind()  # SQLAlchemy 2.x
@@ -18,12 +20,14 @@ def _table(db: Session) -> Table:
         _MEDIOS_BY_ENGINE[key] = tbl
     return tbl
 
+
 class MediaRepository:
     def __init__(self, db: Session):
         self.db = db
         self.t = _table(db)
 
     # --------- CRUD ----------
+
     def get_by_id(self, id_media: int) -> Optional[dict]:
         res = self.db.execute(
             select(self.t).where(self.t.c.id_media == id_media)
@@ -31,8 +35,15 @@ class MediaRepository:
         return dict(res) if res else None
 
     def insert_media(
-        self, *, target: MediaTarget, target_id: int, bucket: str, object_key: str,
-        url_publica: Optional[str], es_principal: bool, orden: int,
+        self,
+        *,
+        target: MediaTarget,
+        target_id: int,
+        bucket: str,
+        object_key: str,
+        url_publica: Optional[str],
+        es_principal: bool,
+        orden: int,
         metadata_json: Optional[dict] = None,
     ) -> int:
         row = {
@@ -106,3 +117,27 @@ class MediaRepository:
                 .values(orden=orden)
             )
         self.db.commit()
+
+    # 🔹 NUEVO: actualizar archivo (object_key/url/metadata) y devolver fila
+    def update_media_file(
+        self,
+        id_media: int,
+        *,
+        bucket: str,
+        object_key: str,
+        url_publica: Optional[str],
+        metadata_json: Optional[dict],
+    ) -> Optional[dict]:
+        res = self.db.execute(
+            update(self.t)
+            .where(self.t.c.id_media == id_media)
+            .values(
+                bucket=bucket,
+                object_key=object_key,
+                url_publica=url_publica,
+                metadata=metadata_json,
+            )
+            .returning(self.t)
+        ).mappings().first()
+        self.db.commit()
+        return dict(res) if res else None
