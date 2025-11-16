@@ -40,6 +40,21 @@ async function getToken() {
   }
 }
 
+// 🔹 nuevo helper: limpiar token del storage
+async function clearToken() {
+  try {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.localStorage.removeItem("token");
+      window.localStorage.removeItem("accessToken");
+    } else {
+      await SecureStore.deleteItemAsync("token");
+      await SecureStore.deleteItemAsync("accessToken");
+    }
+  } catch {
+    // ignorar errores silenciosamente
+  }
+}
+
 async function apiGet<T>(path: string): Promise<T> {
   const token = await getToken();
   const res = await fetch(`${API_URL}${path}`, {
@@ -222,12 +237,21 @@ export default function PerfilScreen() {
   /* --- Me --- */
   const [loadingMe, setLoadingMe] = useState(true);
   const [errorMe, setErrorMe] = useState<string | null>(null);
+  const [noSession, setNoSession] = useState(false); // 🔹 indica que NO hay sesión válida
 
   useEffect(() => {
     (async () => {
       try {
         setLoadingMe(true);
         setErrorMe(null);
+        setNoSession(false);
+
+        // 🔹 primero: ver si existe token
+        const token = await getToken();
+        if (!token) {
+          setNoSession(true);
+          return;
+        }
 
         const me = await AuthAPI.me();
 
@@ -236,7 +260,20 @@ export default function PerfilScreen() {
 
         await setUser(withRol);
       } catch (e: any) {
-        setErrorMe(e?.response?.data?.detail ?? "No se pudo cargar tu perfil.");
+        // 🔹 detectar error de token inválido / sin autorización
+        const status = e?.response?.status;
+        const detail = e?.response?.data?.detail || e?.message || "";
+        const isInvalidToken =
+          status === 401 ||
+          (typeof detail === "string" && /token/i.test(detail));
+
+        if (isInvalidToken) {
+          await clearToken();
+          setNoSession(true);
+          setErrorMe(null);
+        } else {
+          setErrorMe(detail || "No se pudo cargar tu perfil.");
+        }
       } finally {
         setLoadingMe(false);
       }
@@ -340,6 +377,14 @@ export default function PerfilScreen() {
 
   useEffect(() => {
     (async () => {
+      // 🔹 si no hay sesión, no intentamos cargar reservas
+      if (noSession) {
+        setReservas([]);
+        setResError(null);
+        setResLoading(false);
+        return;
+      }
+
       try {
         setResLoading(true);
         setResError(null);
@@ -352,7 +397,7 @@ export default function PerfilScreen() {
         setResLoading(false);
       }
     })();
-  }, []);
+  }, [noSession]);
 
   const rawRole = (user as any)?.rol ?? (user as any)?.role;
   const roleLabel = useMemo(() => getRoleLabel(rawRole), [rawRole]);
@@ -364,6 +409,43 @@ export default function PerfilScreen() {
       </View>
     );
   }
+
+  // 🔹 Vista cuando NO hay sesión (sin token o token inválido)
+  if (noSession) {
+    return (
+      <View style={{ flex:1, backgroundColor:"#fff" }}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} hitSlop={{ top:10, bottom:10, left:10, right:10 }}>
+            <Ionicons name="chevron-back" size={26} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Perfil</Text>
+          <View style={{ width:26 }} />
+        </View>
+
+        <View style={{ flex:1, padding:16, alignItems:"center", justifyContent:"center" }}>
+          <Text style={{ fontSize:20, fontWeight:"800", marginBottom:8 }}>No has iniciado sesión</Text>
+          <Text style={{ color:"#6b7280", textAlign:"center", marginBottom:20 }}>
+            Inicia sesión o crea una cuenta para ver tu perfil, tus reservas y tus reseñas.
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.btn, styles.btnPrimary, { width:"100%" }]}
+            onPress={() => router.push("/(auth)/login")}
+          >
+            <Text style={styles.btnText}>Iniciar sesión</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.btn, styles.btnNeutral, { width:"100%", marginTop:10 }]}
+            onPress={() => router.push("/(auth)/register")}
+          >
+            <Text style={styles.btnText}>Crear cuenta</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   if (errorMe) {
     return (
       <View style={{ flex:1, alignItems:"center", justifyContent:"center", padding:16 }}>
@@ -454,7 +536,14 @@ export default function PerfilScreen() {
         {/* Sesión */}
         <Section title="Sesión">
           <TouchableOpacity
-            onPress={async ()=>{ try{ /* await AuthAPI.logout(); */ } catch{} await logout(); router.replace("/(auth)/login"); }}
+            onPress={async ()=>{
+              try{
+                // await AuthAPI.logout();
+              } catch{}
+              await clearToken(); // 🔹 limpiamos token también al cerrar sesión
+              await logout();
+              router.replace("/(auth)/login");
+            }}
             style={[styles.btn, styles.btnDanger]}
           >
             <Text style={[styles.btnText, { color:"white" }]}>Cerrar sesión</Text>
