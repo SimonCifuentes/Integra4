@@ -1,15 +1,28 @@
 // app/perfil.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, ActivityIndicator, Modal, Animated, Easing, Platform
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  Modal,
+  Animated,
+  Easing,
+  Platform,
+  Image, // 👈 NUEVO
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as SecureStore from "expo-secure-store";
+import * as ImagePicker from "expo-image-picker"; // 👈 NUEVO
 import { useAuth, type Usuario } from "@/src/stores/auth";
 import { AuthAPI } from "@/src/features/features/auth/api";
+import { hooks as uploadHooks } from "@/src/features/uploads/hooks"; // 👈 NUEVO
 
 /* ========= Config API ========= */
 const API_URL =
@@ -20,9 +33,9 @@ const API_URL =
 type ReservaUI = {
   id: string;
   status: string;
-  date?: string;       // YYYY-MM-DD
-  startTime?: string;  // HH:mm
-  endTime?: string;    // HH:mm
+  date?: string; // YYYY-MM-DD
+  startTime?: string; // HH:mm
+  endTime?: string; // HH:mm
   cancha?: { id: string; name?: string | number };
   venue?: { id: string; name: string; address?: string };
   notas?: string | null;
@@ -32,9 +45,15 @@ type ReservaUI = {
 async function getToken() {
   try {
     if (Platform.OS === "web" && typeof window !== "undefined") {
-      return window.localStorage.getItem("token") || window.localStorage.getItem("accessToken");
+      return (
+        window.localStorage.getItem("token") ||
+        window.localStorage.getItem("accessToken")
+      );
     }
-    return (await SecureStore.getItemAsync("token")) || (await SecureStore.getItemAsync("accessToken"));
+    return (
+      (await SecureStore.getItemAsync("token")) ||
+      (await SecureStore.getItemAsync("accessToken"))
+    );
   } catch {
     return null;
   }
@@ -81,11 +100,17 @@ async function fetchMisReservas(): Promise<ReservaUI[]> {
     const fin = r.fin ?? r.hora_fin;
 
     const canchaId = r?.cancha?.id ?? r.cancha_id ?? r.id_cancha ?? "";
-    const canchaNombre = r?.cancha?.nombre ?? r.cancha_nombre ?? r.cancha ?? canchaId ?? "";
+    const canchaNombre =
+      r?.cancha?.nombre ?? r.cancha_nombre ?? r.cancha ?? canchaId ?? "";
 
     const complejoId = r?.complejo?.id ?? r.complejo_id ?? r?.venue?.id ?? "";
-    const complejoNombre = r?.complejo?.nombre ?? r.complejo_nombre ?? r?.venue?.name ?? "Complejo";
-    const complejoDireccion = r?.complejo?.direccion ?? r?.venue?.address ?? undefined;
+    const complejoNombre =
+      r?.complejo?.nombre ??
+      r.complejo_nombre ??
+      r?.venue?.name ??
+      "Complejo";
+    const complejoDireccion =
+      r?.complejo?.direccion ?? r?.venue?.address ?? undefined;
 
     return {
       id: String(id),
@@ -94,7 +119,11 @@ async function fetchMisReservas(): Promise<ReservaUI[]> {
       startTime: inicio,
       endTime: fin,
       cancha: { id: String(canchaId || ""), name: canchaNombre },
-      venue: { id: String(complejoId || ""), name: complejoNombre, address: complejoDireccion },
+      venue: {
+        id: String(complejoId || ""),
+        name: complejoNombre,
+        address: complejoDireccion,
+      },
       notas: r.notas ?? null,
     } as ReservaUI;
   });
@@ -104,7 +133,7 @@ async function fetchMisReservas(): Promise<ReservaUI[]> {
 function b64UrlDecode(str: string): string | null {
   try {
     const pad = "=".repeat((4 - (str.length % 4)) % 4);
-    const base64 = (str.replace(/-/g, "+").replace(/_/g, "/")) + pad;
+    const base64 = str.replace(/-/g, "+").replace(/_/g, "/") + pad;
     if (typeof (globalThis as any).atob === "function") {
       return (globalThis as any).atob(base64);
     }
@@ -139,9 +168,16 @@ function normalizeStr(s?: string) {
 function normalizeRoleName(input?: string): string | null {
   const r = normalizeStr(input);
   if (!r) return null;
-  if (["superadmin", "super-admin", "super_admin", "root"].includes(r)) return "superadmin";
-  if (["admin", "admin_general", "admin-general", "administrador", "administrator"].includes(r)) return "admin_general";
-  if (["admin_grupos", "groups_admin", "admin:grupos"].includes(r)) return "admin_grupos";
+  if (["superadmin", "super-admin", "super_admin", "root"].includes(r))
+    return "superadmin";
+  if (
+    ["admin", "admin_general", "admin-general", "administrador", "administrator"].includes(
+      r
+    )
+  )
+    return "admin_general";
+  if (["admin_grupos", "groups_admin", "admin:grupos"].includes(r))
+    return "admin_grupos";
   if (["owner", "dueno", "dueño", "propietario"].includes(r)) return "owner";
   if (["user", "usuario", "basic"].includes(r)) return "usuario";
   return null;
@@ -151,8 +187,10 @@ function deriveRoleFromMe(me: any): string | null {
   const direct =
     normalizeRoleName(me?.rol) ||
     normalizeRoleName(me?.role) ||
-    (Array.isArray(me?.roles) && me.roles.map(normalizeRoleName).find(Boolean)) ||
-    (Array.isArray(me?.permisos) && me.permisos.map(normalizeRoleName).find(Boolean)) ||
+    (Array.isArray(me?.roles) &&
+      me.roles.map(normalizeRoleName).find(Boolean)) ||
+    (Array.isArray(me?.permisos) &&
+      me.permisos.map(normalizeRoleName).find(Boolean)) ||
     null;
 
   if (direct) return direct;
@@ -167,11 +205,17 @@ function deriveRoleFromMe(me: any): string | null {
 function pickHighestRole(roles?: string[] | null): string | null {
   if (!roles?.length) return null;
   const rank = (r: string) =>
-    r === "superadmin" ? 5 :
-    r === "admin_general" ? 4 :
-    r === "admin_grupos" ? 3 :
-    r === "owner" ? 2 :
-    r === "usuario" ? 1 : 0;
+    r === "superadmin"
+      ? 5
+      : r === "admin_general"
+      ? 4
+      : r === "admin_grupos"
+      ? 3
+      : r === "owner"
+      ? 2
+      : r === "usuario"
+      ? 1
+      : 0;
 
   let best: string | null = null;
   for (const r of roles) {
@@ -188,10 +232,13 @@ async function deriveRoleFromTokenStorage(): Promise<string | null> {
   if (Array.isArray(p.roles)) buckets.push(...p.roles);
   if (Array.isArray(p.authorities)) buckets.push(...p.authorities);
   if (Array.isArray(p.permissions)) buckets.push(...p.permissions);
-  if (typeof p.scope === "string") buckets.push(...String(p.scope).split(" "));
+  if (typeof p.scope === "string")
+    buckets.push(...String(p.scope).split(" "));
   if (p.role) buckets.push(p.role);
 
-  const normalized = buckets.map((x) => normalizeRoleName(String(x))).filter(Boolean) as string[];
+  const normalized = buckets
+    .map((x) => normalizeRoleName(String(x)))
+    .filter(Boolean) as string[];
   return pickHighestRole(normalized);
 }
 async function computeEffectiveRole(me: any): Promise<string> {
@@ -208,24 +255,36 @@ async function computeEffectiveRole(me: any): Promise<string> {
 function getRoleLabel(rol?: string) {
   const r = (rol || "").toLowerCase();
   if (r === "superadmin") return "Superadmin";
-  if (r === "owner" || r === "dueño" || r === "dueno") return "Dueño de complejos";
+  if (r === "owner" || r === "dueño" || r === "dueno")
+    return "Dueño de complejos";
   if (r === "admin" || r === "admin_general") return "Admin general";
-  if (r === "admin_grupos" || r === "admin:grupos" || r === "groups_admin") return "Admin de grupos";
+  if (r === "admin_grupos" || r === "admin:grupos" || r === "groups_admin")
+    return "Admin de grupos";
   return "Usuario";
 }
 function getRoleColors(rol?: string) {
   const r = (rol || "").toLowerCase();
   if (r === "superadmin") return { bg: "#ffe4e6", fg: "#9f1239" };
-  if (r.startsWith("admin") || r === "admin") return { bg: "#fee2e2", fg: "#991b1b" };
-  if (r === "owner" || r === "dueño" || r === "dueno") return { bg: "#dbeafe", fg: "#1e40af" };
+  if (r.startsWith("admin") || r === "admin")
+    return { bg: "#fee2e2", fg: "#991b1b" };
+  if (r === "owner" || r === "dueño" || r === "dueno")
+    return { bg: "#dbeafe", fg: "#1e40af" };
   return { bg: "#dcfce7", fg: "#166534" };
 }
 function RoleBadge({ rol }: { rol?: string }) {
   const label = getRoleLabel(rol);
   const { bg, fg } = getRoleColors(rol);
   return (
-    <View style={{ backgroundColor:bg, paddingHorizontal:10, paddingVertical:6, borderRadius:999, alignSelf:"flex-start" }}>
-      <Text style={{ color:fg, fontWeight:"800" }}>{label}</Text>
+    <View
+      style={{
+        backgroundColor: bg,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+        alignSelf: "flex-start",
+      }}
+    >
+      <Text style={{ color: fg, fontWeight: "800" }}>{label}</Text>
     </View>
   );
 }
@@ -283,46 +342,118 @@ export default function PerfilScreen() {
   /* --- Form usuario --- */
   type FormUsuario = Omit<Usuario, "rol">;
   const [form, setForm] = useState<FormUsuario>(() => ({
-    id_usuario:  user?.id_usuario ?? 0,
-    nombre:      user?.nombre ?? "",
-    apellido:    user?.apellido ?? "",
-    email:       user?.email ?? "",
-    telefono:    (user?.telefono as any) ?? "",
-    avatar_url:  user?.avatar_url ?? null,
+    id_usuario: user?.id_usuario ?? 0,
+    nombre: user?.nombre ?? "",
+    apellido: user?.apellido ?? "",
+    email: user?.email ?? "",
+    telefono: (user?.telefono as any) ?? "",
+    avatar_url: user?.avatar_url ?? null,
   }));
   useEffect(() => {
     if (user) {
       setForm({
         id_usuario: user.id_usuario,
-        nombre:     user.nombre ?? "",
-        apellido:   user.apellido ?? "",
-        email:      user.email ?? "",
-        telefono:   (user.telefono as any) ?? "",
+        nombre: user.nombre ?? "",
+        apellido: user.apellido ?? "",
+        email: user.email ?? "",
+        telefono: (user.telefono as any) ?? "",
         avatar_url: user.avatar_url ?? null,
       });
     }
   }, [user]);
   const onChange = (k: keyof FormUsuario, v: string | null) =>
-    setForm(prev => ({ ...prev, [k]: v as any }));
+    setForm((prev) => ({ ...prev, [k]: v as any }));
+
+  /* --- Avatar: subir foto perfil --- */
+  const { mutate: uploadMedia, isPending: uploadingAvatar } =
+    uploadHooks.useUploadMedia();
+
+  const handleChangeAvatar = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets[0];
+
+      const file: any = {
+        uri: asset.uri,
+        name: (asset as any).fileName || "avatar.jpg",
+        type: (asset as any).mimeType || "image/jpeg",
+      };
+
+      uploadMedia(
+        {
+          target: "perfil",
+          target_id: user?.id_usuario ?? 0,
+          file,
+          es_principal: true,
+          orden: 0,
+        },
+        {
+          onSuccess: async (media: any) => {
+            const avatarUrl = media.url_publica;
+
+            // actualizamos el form
+            setForm((prev) => ({ ...prev, avatar_url: avatarUrl }));
+
+            // persistimos en backend y store
+            try {
+              const payload = { avatar_url: avatarUrl };
+              const updated = await AuthAPI.updateMe(payload);
+              const nextUser =
+                updated && typeof updated === "object"
+                  ? { ...user!, ...updated }
+                  : { ...user!, ...payload };
+              await setUser(nextUser as Usuario);
+            } catch (err) {
+              console.log(err);
+            }
+          },
+          onError: (err: any) => {
+            const msg =
+              err?.response?.data?.detail ||
+              err?.response?.data?.message ||
+              "No se pudo subir la imagen.";
+            Alert.alert("Error", msg);
+          },
+        }
+      );
+    } catch (e: any) {
+      Alert.alert(
+        "Error",
+        e?.message || "No se pudo seleccionar la imagen."
+      );
+    }
+  };
 
   /* --- Confirmación guardar --- */
   const [confirmOpen, setConfirmOpen] = useState(false);
   const cambios = useMemo(() => {
     if (!user) return [];
-    const diffs: { label: string; from?: string | null; to?: string | null }[] = [];
-    const push = (label:string, from:any, to:any) => {
+    const diffs: { label: string; from?: string | null; to?: string | null }[] =
+      [];
+    const push = (label: string, from: any, to: any) => {
       const a = (from ?? "")?.toString?.() ?? "";
       const b = (to ?? "")?.toString?.() ?? "";
       if (a !== b) diffs.push({ label, from: a, to: b });
     };
-    push("Nombre",   user.nombre,   form.nombre);
+    push("Nombre", user.nombre, form.nombre);
     push("Apellido", user.apellido, form.apellido);
-    push("Correo",   user.email,    form.email);
+    push("Correo", user.email, form.email);
     push("Teléfono", user.telefono, form.telefono);
     return diffs;
   }, [user, form]);
   const openConfirm = () => {
-    if (!cambios.length) { Alert.alert("Perfil", "No hay cambios para guardar"); return; }
+    if (!cambios.length) {
+      Alert.alert("Perfil", "No hay cambios para guardar");
+      return;
+    }
     setConfirmOpen(true);
   };
 
@@ -332,18 +463,37 @@ export default function PerfilScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     successAnim.setValue(0);
     Animated.sequence([
-      Animated.timing(successAnim, { toValue: 1, duration: 250, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(successAnim, {
+        toValue: 1,
+        duration: 250,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
       Animated.delay(1100),
-      Animated.timing(successAnim, { toValue: 0, duration: 250, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      Animated.timing(successAnim, {
+        toValue: 0,
+        duration: 250,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
     ]).start();
   };
   const toastStyle = {
     opacity: successAnim,
-    transform: [{
-      scale: successAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] })
-    }, {
-      translateY: successAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] })
-    }]
+    transform: [
+      {
+        scale: successAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.96, 1],
+        }),
+      },
+      {
+        translateY: successAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [10, 0],
+        }),
+      },
+    ],
   };
   const [saving, setSaving] = useState(false);
   const confirmAndSave = async () => {
@@ -352,18 +502,24 @@ export default function PerfilScreen() {
       Haptics.selectionAsync();
       setSaving(true);
       const payload = {
-        nombre:     form.nombre,
-        apellido:   form.apellido,
-        telefono:   form.telefono ?? null,
-        email:      form.email,
+        nombre: form.nombre,
+        apellido: form.apellido,
+        telefono: form.telefono ?? null,
+        email: form.email,
         avatar_url: form.avatar_url ?? null,
       };
       const updated = await AuthAPI.updateMe(payload);
-      const nextUser = updated && typeof updated === "object" ? { ...user!, ...updated } : { ...user!, ...payload };
+      const nextUser =
+        updated && typeof updated === "object"
+          ? { ...user!, ...updated }
+          : { ...user!, ...payload };
       await setUser(nextUser);
       showSuccess();
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || e?.response?.data?.message || "No se pudieron guardar los cambios";
+      const msg =
+        e?.response?.data?.detail ||
+        e?.response?.data?.message ||
+        "No se pudieron guardar los cambios";
       Alert.alert("Error", msg);
     } finally {
       setSaving(false);
@@ -404,7 +560,7 @@ export default function PerfilScreen() {
 
   if (loadingMe) {
     return (
-      <View style={{ flex:1, alignItems:"center", justifyContent:"center" }}>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator />
       </View>
     );
@@ -413,30 +569,45 @@ export default function PerfilScreen() {
   // 🔹 Vista cuando NO hay sesión (sin token o token inválido)
   if (noSession) {
     return (
-      <View style={{ flex:1, backgroundColor:"#fff" }}>
+      <View style={{ flex: 1, backgroundColor: "#fff" }}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} hitSlop={{ top:10, bottom:10, left:10, right:10 }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
             <Ionicons name="chevron-back" size={26} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Perfil</Text>
-          <View style={{ width:26 }} />
+          <View style={{ width: 26 }} />
         </View>
 
-        <View style={{ flex:1, padding:16, alignItems:"center", justifyContent:"center" }}>
-          <Text style={{ fontSize:20, fontWeight:"800", marginBottom:8 }}>No has iniciado sesión</Text>
-          <Text style={{ color:"#6b7280", textAlign:"center", marginBottom:20 }}>
-            Inicia sesión o crea una cuenta para ver tu perfil, tus reservas y tus reseñas.
+        <View
+          style={{
+            flex: 1,
+            padding: 16,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text style={{ fontSize: 20, fontWeight: "800", marginBottom: 8 }}>
+            No has iniciado sesión
+          </Text>
+          <Text
+            style={{ color: "#6b7280", textAlign: "center", marginBottom: 20 }}
+          >
+            Inicia sesión o crea una cuenta para ver tu perfil, tus reservas y
+            tus reseñas.
           </Text>
 
           <TouchableOpacity
-            style={[styles.btn, styles.btnPrimary, { width:"100%" }]}
+            style={[styles.btn, styles.btnPrimary, { width: "100%" }]}
             onPress={() => router.push("/(auth)/login")}
           >
             <Text style={styles.btnText}>Iniciar sesión</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.btn, styles.btnNeutral, { width:"100%", marginTop:10 }]}
+            style={[styles.btn, styles.btnNeutral, { width: "100%", marginTop: 10 }]}
             onPress={() => router.push("/(auth)/register")}
           >
             <Text style={styles.btnText}>Crear cuenta</Text>
@@ -448,9 +619,23 @@ export default function PerfilScreen() {
 
   if (errorMe) {
     return (
-      <View style={{ flex:1, alignItems:"center", justifyContent:"center", padding:16 }}>
-        <Text style={{ color:"#b91c1c", textAlign:"center" }}>{errorMe}</Text>
-        <TouchableOpacity onPress={() => router.back()} style={[styles.btn, styles.btnNeutral, { marginTop:12, paddingHorizontal:16 }]}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 16,
+        }}
+      >
+        <Text style={{ color: "#b91c1c", textAlign: "center" }}>{errorMe}</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={[
+            styles.btn,
+            styles.btnNeutral,
+            { marginTop: 12, paddingHorizontal: 16 },
+          ]}
+        >
           <Text style={styles.btnText}>Volver</Text>
         </TouchableOpacity>
       </View>
@@ -458,39 +643,104 @@ export default function PerfilScreen() {
   }
 
   return (
-    <View style={{ flex:1, backgroundColor:"#fff" }}>
+    <View style={{ flex: 1, backgroundColor: "#fff" }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 64 }}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} hitSlop={{ top:10, bottom:10, left:10, right:10 }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
             <Ionicons name="chevron-back" size={26} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Perfil</Text>
-          <View style={{ width:26 }} />
+          <View style={{ width: 26 }} />
+        </View>
+
+        {/* Avatar estilo WhatsApp */}
+        <View style={styles.avatarWrapper}>
+          <View style={styles.avatarContainer}>
+            <Image
+              source={
+                form.avatar_url || user?.avatar_url
+                  ? { uri: (form.avatar_url || user?.avatar_url)! }
+                  : require("@/assets/images/avatar-placeholder.png") // 👈 CAMBIA POR TU IMAGEN POR DEFECTO
+              }
+              style={styles.avatar}
+            />
+            <TouchableOpacity
+              style={styles.cameraButton}
+              onPress={handleChangeAvatar}
+              disabled={uploadingAvatar}
+              activeOpacity={0.8}
+            >
+              {uploadingAvatar ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="camera" size={18} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Rol */}
         <Section title="Rol">
-          <View style={{ flexDirection:"row", alignItems:"center", justifyContent:"space-between" }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
             <View>
-              <Text style={{ fontWeight:"700" }}>Rol actual</Text>
-              <Text style={{ color:"#6b7280", marginTop:2 }}>{roleLabel}</Text>
+              <Text style={{ fontWeight: "700" }}>Rol actual</Text>
+              <Text style={{ color: "#6b7280", marginTop: 2 }}>
+                {roleLabel}
+              </Text>
             </View>
             <RoleBadge rol={rawRole} />
           </View>
-          <Text style={{ color:"#6b7280", marginTop:6 }}>
-            Los permisos en la app dependen de tu rol. Si necesitas cambiarlo, contáctate con un administrador.
+          <Text style={{ color: "#6b7280", marginTop: 6 }}>
+            Los permisos en la app dependen de tu rol. Si necesitas cambiarlo,
+            contáctate con un administrador.
           </Text>
         </Section>
 
         {/* Datos personales */}
         <Section title="Datos personales">
-          <Field label="Nombre"   value={form.nombre}   onChangeText={(v)=>onChange("nombre", v)} />
-          <Field label="Apellido" value={form.apellido} onChangeText={(v)=>onChange("apellido", v)} />
-          <Field label="Correo"   value={form.email ?? ""} keyboardType="email-address" autoCapitalize="none" onChangeText={(v)=>onChange("email", v)} />
-          <Field label="Teléfono" value={(form.telefono ?? "") as string} keyboardType="phone-pad" onChangeText={(v)=>onChange("telefono", v)} />
-          <TouchableOpacity onPress={openConfirm} disabled={saving} style={[styles.btn, styles.btnPrimary, saving && { opacity: 0.6 }]}>
-            {saving ? <ActivityIndicator /> : <Text style={styles.btnText}>Guardar cambios</Text>}
+          <Field
+            label="Nombre"
+            value={form.nombre}
+            onChangeText={(v) => onChange("nombre", v)}
+          />
+          <Field
+            label="Apellido"
+            value={form.apellido}
+            onChangeText={(v) => onChange("apellido", v)}
+          />
+          <Field
+            label="Correo"
+            value={form.email ?? ""}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            onChangeText={(v) => onChange("email", v)}
+          />
+          <Field
+            label="Teléfono"
+            value={(form.telefono ?? "") as string}
+            keyboardType="phone-pad"
+            onChangeText={(v) => onChange("telefono", v)}
+          />
+          <TouchableOpacity
+            onPress={openConfirm}
+            disabled={saving}
+            style={[styles.btn, styles.btnPrimary, saving && { opacity: 0.6 }]}
+          >
+            {saving ? (
+              <ActivityIndicator />
+            ) : (
+              <Text style={styles.btnText}>Guardar cambios</Text>
+            )}
           </TouchableOpacity>
         </Section>
 
@@ -499,9 +749,9 @@ export default function PerfilScreen() {
           {resLoading ? (
             <ActivityIndicator />
           ) : resError ? (
-            <Text style={{ color:"#b91c1c" }}>{resError}</Text>
+            <Text style={{ color: "#b91c1c" }}>{resError}</Text>
           ) : reservas.length === 0 ? (
-            <Text style={{ color:"#6b7280" }}>Aún no tienes reservas.</Text>
+            <Text style={{ color: "#6b7280" }}>Aún no tienes reservas.</Text>
           ) : (
             <>
               {reservas.slice(0, 3).map((r) => (
@@ -519,13 +769,19 @@ export default function PerfilScreen() {
           )}
         </Section>
 
-        {/* Reseñas (nuevo apartado) */}
+        {/* Reseñas (mis reseñas) */}
         <Section title="Reseñas">
           <TouchableOpacity
             onPress={() => router.push("/(perfil)/mis-resenas")}
             style={styles.navRow}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
               <Ionicons name="star-outline" size={18} color="#0f172a" />
               <Text style={styles.navRowText}>Mis reseñas</Text>
             </View>
@@ -536,17 +792,19 @@ export default function PerfilScreen() {
         {/* Sesión */}
         <Section title="Sesión">
           <TouchableOpacity
-            onPress={async ()=>{
-              try{
+            onPress={async () => {
+              try {
                 // await AuthAPI.logout();
-              } catch{}
+              } catch {}
               await clearToken(); // 🔹 limpiamos token también al cerrar sesión
               await logout();
               router.replace("/(auth)/login");
             }}
             style={[styles.btn, styles.btnDanger]}
           >
-            <Text style={[styles.btnText, { color:"white" }]}>Cerrar sesión</Text>
+            <Text style={[styles.btnText, { color: "white" }]}>
+              Cerrar sesión
+            </Text>
           </TouchableOpacity>
         </Section>
       </ScrollView>
@@ -554,35 +812,78 @@ export default function PerfilScreen() {
       {/* TOAST éxito */}
       <Animated.View pointerEvents="none" style={[styles.toast, toastStyle]}>
         <Ionicons name="checkmark-circle" size={22} color="#065f46" />
-        <Text style={{ color:"#065f46", fontWeight:"800" }}>¡Guardado!</Text>
+        <Text style={{ color: "#065f46", fontWeight: "800" }}>¡Guardado!</Text>
       </Animated.View>
 
       {/* Modal confirmación */}
-      <Modal visible={confirmOpen} animationType="fade" transparent onRequestClose={() => setConfirmOpen(false)}>
+      <Modal
+        visible={confirmOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setConfirmOpen(false)}
+      >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={{ fontSize:16, fontWeight:"800" }}>Confirmar cambios</Text>
-            <Text style={{ color:"#6b7280", marginTop:4 }}>Revisa y confirma los datos que vas a actualizar:</Text>
-            <View style={{ marginTop:12, gap:8 }}>
-              {cambios.length ? cambios.map((c, i) => (
-                <View key={i} style={styles.diffRow}>
-                  <Text style={styles.diffLabel}>{c.label}</Text>
-                  <View style={{ flexDirection:"row", alignItems:"center", gap:6 }}>
-                    <Text style={styles.diffFrom}>{c.from || "—"}</Text>
-                    <Ionicons name="arrow-forward" size={16} color="#64748b" />
-                    <Text style={styles.diffTo}>{c.to || "—"}</Text>
+            <Text style={{ fontSize: 16, fontWeight: "800" }}>
+              Confirmar cambios
+            </Text>
+            <Text style={{ color: "#6b7280", marginTop: 4 }}>
+              Revisa y confirma los datos que vas a actualizar:
+            </Text>
+            <View style={{ marginTop: 12, gap: 8 }}>
+              {cambios.length ? (
+                cambios.map((c, i) => (
+                  <View key={i} style={styles.diffRow}>
+                    <Text style={styles.diffLabel}>{c.label}</Text>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <Text style={styles.diffFrom}>{c.from || "—"}</Text>
+                      <Ionicons
+                        name="arrow-forward"
+                        size={16}
+                        color="#64748b"
+                      />
+                      <Text style={styles.diffTo}>{c.to || "—"}</Text>
+                    </View>
                   </View>
-                </View>
-              )) : (
-                <Text style={{ color:"#6b7280" }}>No hay cambios</Text>
+                ))
+              ) : (
+                <Text style={{ color: "#6b7280" }}>No hay cambios</Text>
               )}
             </View>
-            <View style={{ flexDirection:"row", gap:8, marginTop:14 }}>
-              <TouchableOpacity onPress={() => setConfirmOpen(false)} style={[styles.btn, styles.btnNeutral, { flex:1 }]}>
+            <View
+              style={{
+                flexDirection: "row",
+                gap: 8,
+                marginTop: 14,
+              }}
+            >
+              <TouchableOpacity
+                onPress={() => setConfirmOpen(false)}
+                style={[styles.btn, styles.btnNeutral, { flex: 1 }]}
+              >
                 <Text style={styles.btnText}>Revisar</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={confirmAndSave} disabled={saving} style={[styles.btn, styles.btnPrimary, { flex:1 }, saving && { opacity: 0.6 }]}>
-                {saving ? <ActivityIndicator /> : <Text style={styles.btnText}>Confirmar y guardar</Text>}
+              <TouchableOpacity
+                onPress={confirmAndSave}
+                disabled={saving}
+                style={[
+                  styles.btn,
+                  styles.btnPrimary,
+                  { flex: 1 },
+                  saving && { opacity: 0.6 },
+                ]}
+              >
+                {saving ? (
+                  <ActivityIndicator />
+                ) : (
+                  <Text style={styles.btnText}>Confirmar y guardar</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -593,24 +894,37 @@ export default function PerfilScreen() {
 }
 
 /* ========= UI helpers ========= */
-function Section({ title, children }:{ title:string; children:React.ReactNode }) {
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
-    <View style={{ paddingHorizontal:16, marginTop:14 }}>
+    <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
       <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={{ gap:12, marginTop:8 }}>{children}</View>
+      <View style={{ gap: 12, marginTop: 8 }}>{children}</View>
     </View>
   );
 }
 
 function Field({
-  label, value, onChangeText, keyboardType, autoCapitalize
-}:{
-  label:string; value:string; onChangeText:(t:string)=>void;
-  keyboardType?:"default"|"email-address"|"phone-pad"; autoCapitalize?:"none"|"sentences"|"words"|"characters";
+  label,
+  value,
+  onChangeText,
+  keyboardType,
+  autoCapitalize,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (t: string) => void;
+  keyboardType?: "default" | "email-address" | "phone-pad";
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
 }) {
   return (
-    <View style={{ gap:6 }}>
-      <Text style={{ fontWeight:"600" }}>{label}</Text>
+    <View style={{ gap: 6 }}>
+      <Text style={{ fontWeight: "600" }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -623,20 +937,31 @@ function Field({
   );
 }
 
-function ReservaBadge({ status }:{ status:string }) {
+function ReservaBadge({ status }: { status: string }) {
   const key = (status || "").toLowerCase();
-  const map: Record<string, { bg: string; fg: string; label: string }> = {
+  const map: Record<
+    string,
+    { bg: string; fg: string; label: string }
+  > = {
     confirmed: { bg: "#dcfce7", fg: "#166534", label: "Confirmada" },
-    confirmada:{ bg: "#dcfce7", fg: "#166534", label: "Confirmada" },
-    pending:   { bg: "#fef9c3", fg: "#854d0e", label: "Pendiente"  },
-    pendiente: { bg: "#fef9c3", fg: "#854d0e", label: "Pendiente"  },
-    cancelled: { bg: "#fee2e2", fg: "#991b1b", label: "Cancelada"  },
-    cancelada: { bg: "#fee2e2", fg: "#991b1b", label: "Cancelada"  },
+    confirmada: { bg: "#dcfce7", fg: "#166534", label: "Confirmada" },
+    pending: { bg: "#fef9c3", fg: "#854d0e", label: "Pendiente" },
+    pendiente: { bg: "#fef9c3", fg: "#854d0e", label: "Pendiente" },
+    cancelled: { bg: "#fee2e2", fg: "#991b1b", label: "Cancelada" },
+    cancelada: { bg: "#fee2e2", fg: "#991b1b", label: "Cancelada" },
   };
-  const sty = map[key] ?? { bg:"#e5e7eb", fg:"#374151", label: status || "—" };
+  const sty =
+    map[key] ?? { bg: "#e5e7eb", fg: "#374151", label: status || "—" };
   return (
-    <View style={{ backgroundColor: sty.bg, paddingHorizontal:10, paddingVertical:6, borderRadius:999 }}>
-      <Text style={{ color:sty.fg, fontWeight:"700" }}>{sty.label}</Text>
+    <View
+      style={{
+        backgroundColor: sty.bg,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+      }}
+    >
+      <Text style={{ color: sty.fg, fontWeight: "700" }}>{sty.label}</Text>
     </View>
   );
 }
@@ -644,7 +969,11 @@ function ReservaBadge({ status }:{ status:string }) {
 function ReservaRow({ r }: { r: ReservaUI }) {
   const title =
     (r.cancha?.name ? `${r.cancha.name}` : "") +
-    (r.venue?.name ? (r.cancha?.name ? " - " : "") + r.venue.name : r.cancha?.name ? "" : "Complejo");
+    (r.venue?.name
+      ? (r.cancha?.name ? " - " : "") + r.venue.name
+      : r.cancha?.name
+      ? ""
+      : "Complejo");
 
   const subtitle = formatFechaFila(r.date, r.startTime);
 
@@ -680,57 +1009,158 @@ function formatFechaFila(fecha?: string, inicio?: string) {
   if (!fecha) return "—";
   try {
     const d = new Date(`${fecha}T00:00:00`);
-    const dow = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(d);
-    const dayMon = new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(d);
+    const dow = new Intl.DateTimeFormat(undefined, {
+      weekday: "short",
+    }).format(d);
+    const dayMon = new Intl.DateTimeFormat(undefined, {
+      day: "2-digit",
+      month: "short",
+    }).format(d);
     return `${capitalize(dow)} ${inicio ? `${inicio}, ` : ""}${dayMon}`;
   } catch {
     return [inicio, fecha].filter(Boolean).join(", ");
   }
 }
-function capitalize(s: string) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+function capitalize(s: string) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
 
 /* ========= estilos ========= */
+const AVATAR_SIZE = 130;
+
 const styles = StyleSheet.create({
-  header:{ paddingHorizontal:16, paddingTop:16, paddingBottom:6, flexDirection:"row", alignItems:"center", gap:12 },
-  headerTitle:{ fontSize:20, fontWeight:"800", flex:1, textAlign:"center" },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    flex: 1,
+    textAlign: "center",
+  },
 
-  sectionTitle:{ fontSize:16, fontWeight:"700" },
-  input:{ height:44, borderWidth:1, borderColor:"#e5e7eb", borderRadius:12, paddingHorizontal:14, backgroundColor:"#f9fafb" },
+  avatarWrapper: { alignItems: "center", marginTop: 8, marginBottom: 12 },
+  avatarContainer: {
+    width: AVATAR_SIZE + 12,
+    height: AVATAR_SIZE + 12,
+    borderRadius: (AVATAR_SIZE + 12) / 2,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatar: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    borderWidth: 2,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#f9fafb",
+  },
+  cameraButton: {
+    position: "absolute",
+    bottom: 4,
+    right: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#22c55e",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
 
-  itemRow:{ flexDirection:"row", alignItems:"center", justifyContent:"space-between", borderWidth:1, borderColor:"#e5e7eb", backgroundColor:"#fff", borderRadius:12, padding:14 },
-  itemTitle:{ fontWeight:"700" },
-  itemSub:{ color:"#6b7280" },
+  sectionTitle: { fontSize: 16, fontWeight: "700" },
+  input: {
+    height: 44,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#f9fafb",
+  },
 
-  btn:{ height:46, borderRadius:12, alignItems:"center", justifyContent:"center", marginTop:6 },
-  btnPrimary:{ backgroundColor:"#e0f2fe" },
-  btnDanger:{ backgroundColor:"#ef4444" },
-  btnNeutral:{ backgroundColor:"#f1f5f9" },
-  btnText:{ fontWeight:"700" },
+  itemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 14,
+  },
+  itemTitle: { fontWeight: "700" },
+  itemSub: { color: "#6b7280" },
+
+  btn: {
+    height: 46,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 6,
+  },
+  btnPrimary: { backgroundColor: "#e0f2fe" },
+  btnDanger: { backgroundColor: "#ef4444" },
+  btnNeutral: { backgroundColor: "#f1f5f9" },
+  btnText: { fontWeight: "700" },
 
   // Toast de éxito
-  toast:{
-    position:"absolute",
-    left:16, right:16, bottom:16,
-    paddingVertical:10, paddingHorizontal:12,
-    borderRadius:12,
-    backgroundColor:"#ecfdf5",
-    borderWidth:1, borderColor:"#a7f3d0",
-    flexDirection:"row", alignItems:"center", gap:8,
-    shadowColor:"#000", shadowOpacity:0.08, shadowRadius:10, shadowOffset:{ width:0, height:4 },
-    elevation:2,
+  toast: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: "#ecfdf5",
+    borderWidth: 1,
+    borderColor: "#a7f3d0",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
 
   // Modal de confirmación
-  modalBackdrop:{ flex:1, backgroundColor:"rgba(0,0,0,0.32)", alignItems:"center", justifyContent:"center", padding:16 },
-  modalCard:{
-    width:"100%", maxWidth:420,
-    backgroundColor:"#fff", borderRadius:16, padding:16,
-    borderWidth:1, borderColor:"#e5e7eb"
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.32)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
   },
-  diffRow:{ borderWidth:1, borderColor:"#e5e7eb", borderRadius:12, padding:10, backgroundColor:"#fafafa" },
-  diffLabel:{ fontWeight:"700", marginBottom:4 },
-  diffFrom:{ color:"#6b7280" },
-  diffTo:{ fontWeight:"700" },
+  modalCard: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  diffRow: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    padding: 10,
+    backgroundColor: "#fafafa",
+  },
+  diffLabel: { fontWeight: "700", marginBottom: 4 },
+  diffFrom: { color: "#6b7280" },
+  diffTo: { fontWeight: "700" },
 
   // Navegación a Mis reseñas
   navRow: {
