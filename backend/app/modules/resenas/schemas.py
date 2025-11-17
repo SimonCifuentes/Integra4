@@ -43,3 +43,15 @@ class ReporteOut(BaseModel):
 
 # ===== Query params list =====
 OrderType = Literal["recientes", "mejor", "peor"]
+
+
+class PromedioCanchaOut(BaseModel):
+    id_cancha: int = Field(..., description="ID de la cancha")
+    promedio: float = Field(
+        ..., 
+        description="Promedio de calificación entre 1 y 5 (0 si no tiene reseñas)"
+    )
+    total_resenas: int = Field(
+        ..., 
+        description="Cantidad de reseñas activas consideradas en el promedio"
+    )

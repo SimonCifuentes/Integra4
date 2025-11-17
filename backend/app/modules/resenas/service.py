@@ -1,6 +1,7 @@
 # app/modules/resenas/service.py
 from __future__ import annotations
 from typing import Optional
+from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.core.config import settings  # <— IMPORTANTE
@@ -187,3 +188,17 @@ class Service:
         # row ya tiene las claves que espera ResenaOut
         # (promedio_rating y total_resenas quedarán en None)
         return ResenaOut(**row)
+    
+    @staticmethod
+    def promedio_cancha(db: Session, id_cancha: int) -> dict[str, Any]:
+        """
+        Wrapper del repositorio para obtener el promedio de una cancha.
+        """
+        return repo.promedio_por_cancha(db, id_cancha)
+
+    @staticmethod
+    def promedios_canchas(db: Session) -> list[dict[str, Any]]:
+        """
+        Wrapper del repositorio para obtener todos los promedios por cancha.
+        """
+        return repo.promedios_todas_canchas(db)

@@ -24,7 +24,7 @@ from app.shared.deps import get_db, require_roles
 from app.modules.auth.model import Usuario
 from .schemas import (
     ResenaCreateIn, ResenaUpdateIn, ResenaOut,
-    ReporteIn, ReporteOut, OrderType
+    ReporteIn, ReporteOut, PromedioCanchaOut, OrderType
 )
 from .service import Service
 
@@ -271,3 +271,36 @@ def reportar_resena(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get(
+    "/promedio/canchas/{id_cancha}",
+    response_model=PromedioCanchaOut,
+    summary="Promedio de estrellas de una cancha",
+    description=(
+        "Devuelve el promedio de `calificacion` (1 a 5) y la cantidad de reseñas "
+        "activas (`esta_activa = TRUE`) para la cancha indicada."
+    ),
+)
+def obtener_promedio_cancha(
+    id_cancha: int,
+    db: Session = Depends(get_db),
+):
+    data = Service.promedio_cancha(db, id_cancha=id_cancha)
+    return data
+
+
+@router.get(
+    "/promedio/canchas",
+    response_model=list[PromedioCanchaOut],
+    summary="Promedio de estrellas por cancha",
+    description=(
+        "Devuelve el promedio de calificación y cantidad de reseñas activas "
+        "agrupadas por `id_cancha`. Útil para mostrar ratings en listados."
+    ),
+)
+def listar_promedios_canchas(
+    db: Session = Depends(get_db),
+):
+    data = Service.promedios_canchas(db)
+    return data

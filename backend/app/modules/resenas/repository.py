@@ -246,3 +246,68 @@ def is_user_admin_of_complejo(db: Session, user_id: int, id_complejo: int) -> bo
     LIMIT 1
     """
     return db.execute(text(sql), {"cid": id_complejo, "uid": user_id}).first() is not None
+
+
+def promedio_por_cancha(
+    db: Session,
+    id_cancha: int,
+) -> dict[str, Any]:
+    """
+    Devuelve promedio y total de reseñas activas para una cancha.
+    """
+    sql = """
+    SELECT
+      id_cancha,
+      AVG(puntuacion)::float AS promedio,
+      COUNT(*)::INT AS total_resenas
+    FROM resenas
+    WHERE id_cancha = :id_cancha
+      AND esta_activa = TRUE
+    GROUP BY id_cancha;
+    """
+    row = db.execute(text(sql), {"id_cancha": id_cancha}).mappings().first()
+
+    if row is None:
+        # Sin reseñas activas para esa cancha
+        return {
+            "id_cancha": id_cancha,
+            "promedio": 0.0,
+            "total_resenas": 0,
+        }
+
+    promedio = row["promedio"] if row["promedio"] is not None else 0.0
+
+    return {
+        "id_cancha": int(row["id_cancha"]),
+        "promedio": float(promedio),
+        "total_resenas": int(row["total_resenas"]),
+    }
+
+
+
+def promedios_todas_canchas(db: Session) -> list[dict[str, Any]]:
+    """
+    Devuelve promedio y cantidad de reseñas activas por cancha.
+    Ideal para mostrar ratings en tarjetas de canchas en el listado.
+    """
+    sql = """
+    SELECT
+      id_cancha,
+      AVG(puntuacion)::float AS promedio,
+      COUNT(*)::INT AS total_resenas
+    FROM resenas
+    WHERE id_cancha IS NOT NULL
+      AND esta_activa = TRUE
+    GROUP BY id_cancha
+    ORDER BY promedio DESC;
+    """
+    rows = db.execute(text(sql)).mappings().all()
+
+    return [
+        {
+            "id_cancha": int(r["id_cancha"]),
+            "promedio": float(r["promedio"]),
+            "total_resenas": int(r["total_resenas"]),
+        }
+        for r in rows
+    ]
