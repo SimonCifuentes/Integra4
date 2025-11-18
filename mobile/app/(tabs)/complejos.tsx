@@ -7,6 +7,15 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useComplejos } from "@/src/features/features/complejos/hooks";
+import { useCanchas } from "@/src/features/features/canchas/hooks";
+
+// ⭐ IMPORTAMOS
+import { hooks as resenasHooks } from "@/src/features/resenas/hooks";
+import {
+  calcularRatingPorComplejo,
+  type CanchaWithComplejo,
+  type RatingComplejo,
+} from "@/src/features/resenas/utils";
 
 type ComplejoBE = {
   id?: number | string;
@@ -24,7 +33,14 @@ type ComplejoBE = {
 };
 
 export default function ComplejosScreen() {
-  const { data, isLoading, isError, refetch, isRefetching } = useComplejos({ page: 1, page_size: 50 });
+  const { data, isLoading, isError, refetch, isRefetching } =
+    useComplejos({ page: 1, page_size: 50 });
+
+  const { data: canchasData } =
+    useCanchas({ page: 1, page_size: 200 });
+
+  const { data: ratingsCanchas } =
+    resenasHooks.useRatingsPromedioCanchas();
 
   const [q, setQ] = useState("");
   const [fDeporte, setFDeporte] = useState<string | null>(null);
@@ -33,8 +49,10 @@ export default function ComplejosScreen() {
   const deportes = ["Fútbol", "Pádel", "Tenis", "Básquetbol"];
   const sectores = ["Centro", "Ñielol", "Labranza"];
 
-  // Normalización desde BE (soporta lista plana o paginada)
-  const raw: ComplejoBE[] = ((data as any)?.items ?? data ?? []) as ComplejoBE[];
+  // Normalización desde backend
+  const raw: ComplejoBE[] =
+    ((data as any)?.items ?? data ?? []) as ComplejoBE[];
+
   const items = useMemo(() => {
     return raw.map((it) => {
       const id = (it.id ?? it.id_complejo) as number | string;
@@ -42,7 +60,6 @@ export default function ComplejosScreen() {
       const direccion = it.direccion ?? "";
       const comuna = it.comuna ?? it.sector ?? "";
       const deportes = Array.isArray(it.deportes) ? it.deportes : [];
-      const rating = typeof it.rating === "number" ? it.rating : undefined;
       const canchas =
         typeof it.canchas === "number"
           ? it.canchas
@@ -51,15 +68,43 @@ export default function ComplejosScreen() {
           : typeof (it as any).courts_count === "number"
           ? (it as any).courts_count
           : undefined;
-      return { id, nombre, direccion, comuna, deportes, rating, canchas };
+
+      return { id, nombre, direccion, comuna, deportes, canchas };
     });
   }, [raw]);
 
+  // ⭐ PASO 1: asociar canchas a complejos
+  const canchasMin: CanchaWithComplejo[] = useMemo(() => {
+    if (!canchasData) return [];
+
+    const arr = (canchasData.items ?? canchasData ?? []) as any[];
+
+    return arr.map((c) => ({
+      id_cancha: Number(c.id_cancha),
+      id_complejo: c.id_complejo != null ? Number(c.id_complejo) : null,
+    }));
+  }, [canchasData]);
+
+  // ⭐ PASO 2: calcular ratings por complejo
+  const ratingsPorComplejo = useMemo(() => {
+    if (!ratingsCanchas || !canchasMin.length) return new Map();
+
+    return calcularRatingPorComplejo(canchasMin, ratingsCanchas);
+  }, [ratingsCanchas, canchasMin]);
+
+  // Filtros de búsqueda
   const complejos = useMemo(() => {
-    return items.filter(c =>
-      (q ? (`${c.nombre} ${c.direccion} ${c.comuna}`).toLowerCase().includes(q.toLowerCase()) : true) &&
-      (fDeporte ? c.deportes?.includes(fDeporte) : true) &&
-      (fSector ? (c.comuna ?? "").toLowerCase().includes(fSector.toLowerCase()) : true)
+    return items.filter(
+      (c) =>
+        (q
+          ? `${c.nombre} ${c.direccion} ${c.comuna}`
+              .toLowerCase()
+              .includes(q.toLowerCase())
+          : true) &&
+        (fDeporte ? c.deportes?.includes(fDeporte) : true) &&
+        (fSector
+          ? (c.comuna ?? "").toLowerCase().includes(fSector.toLowerCase())
+          : true)
     );
   }, [items, q, fDeporte, fSector]);
 
@@ -67,7 +112,12 @@ export default function ComplejosScreen() {
     <ScrollView
       style={{ flex: 1, backgroundColor: "#fff" }}
       contentContainerStyle={{ paddingBottom: 24 }}
-      refreshControl={<RefreshControl refreshing={!!isRefetching} onRefresh={() => refetch()} />}
+      refreshControl={
+        <RefreshControl
+          refreshing={!!isRefetching}
+          onRefresh={() => refetch()}
+        />
+      }
     >
       {/* Header */}
       <View style={styles.header}>
@@ -89,7 +139,11 @@ export default function ComplejosScreen() {
           />
           {!!q && (
             <TouchableOpacity onPress={() => setQ("")}>
-              <Ionicons name="close-circle" size={18} color="#94a3b8" />
+              <Ionicons
+                name="close-circle"
+                size={18}
+                color="#94a3b8"
+              />
             </TouchableOpacity>
           )}
         </View>
@@ -102,7 +156,12 @@ export default function ComplejosScreen() {
           label={fDeporte ?? "Deporte"}
           onPress={() => {
             const idx = deportes.indexOf(fDeporte ?? "");
-            const next = idx < 0 ? deportes[0] : (idx + 1 >= deportes.length ? null : deportes[idx + 1]);
+            const next =
+              idx < 0
+                ? deportes[0]
+                : idx + 1 >= deportes.length
+                ? null
+                : deportes[idx + 1];
             setFDeporte(next);
           }}
           active={!!fDeporte}
@@ -112,14 +171,26 @@ export default function ComplejosScreen() {
           label={fSector ?? "Sector"}
           onPress={() => {
             const idx = sectores.indexOf(fSector ?? "");
-            const next = idx < 0 ? sectores[0] : (idx + 1 >= sectores.length ? null : sectores[idx + 1]);
+            const next =
+              idx < 0
+                ? sectores[0]
+                : idx + 1 >= sectores.length
+                ? null
+                : sectores[idx + 1];
             setFSector(next);
           }}
           active={!!fSector}
         />
         {(fDeporte || fSector) && (
-          <TouchableOpacity onPress={() => { setFDeporte(null); setFSector(null); }}>
-            <Text style={{ color: "#ef4444", fontWeight: "700" }}>Limpiar</Text>
+          <TouchableOpacity
+            onPress={() => {
+              setFDeporte(null);
+              setFSector(null);
+            }}
+          >
+            <Text style={{ color: "#ef4444", fontWeight: "700" }}>
+              Limpiar
+            </Text>
           </TouchableOpacity>
         )}
       </View>
@@ -130,64 +201,78 @@ export default function ComplejosScreen() {
           <ActivityIndicator />
         </View>
       )}
-      {isError && !isLoading && (
-        <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-          <Text style={{ color: "#b91c1c" }}>No se pudieron cargar los complejos. Reintenta.</Text>
-          <TouchableOpacity onPress={() => refetch()} style={[styles.btnOutline, { marginTop: 8 }]}>
-            <Text style={{ color: "#0ea5a4", fontWeight: "700" }}>Reintentar</Text>
-          </TouchableOpacity>
-        </View>
-      )}
 
       {/* Listado */}
       {!isLoading && !isError && (
         <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 6 }}>
-          {complejos.map((c) => (
-            <View key={String(c.id)} style={styles.card}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={styles.roundIcon}><Ionicons name="home-outline" size={16} color="#0ea5a4" /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>{c.nombre}</Text>
-                  <Text style={styles.cardSub}>
-                    {(c.direccion || "Dirección desconocida")} · {(c.comuna || "—")}
-                  </Text>
-                  {!!c.deportes?.length && (
+          {complejos.map((c) => {
+            // ⭐ Obtener rating calculado del complejo
+            const r =
+              ratingsPorComplejo.get(Number(c.id)) ??
+              ratingsPorComplejo.get(Number(c.id_complejo || c.id));
+
+            return (
+              <View key={String(c.id)} style={styles.card}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <View style={styles.roundIcon}>
+                    <Ionicons
+                      name="home-outline"
+                      size={16}
+                      color="#0ea5a4"
+                    />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardTitle}>{c.nombre}</Text>
+
                     <Text style={styles.cardSub}>
-                      Deportes: {c.deportes.join(", ")}{typeof c.canchas === "number" ? ` · Canchas: ${c.canchas}` : ""}
+                      {(c.direccion || "Dirección desconocida")} ·{" "}
+                      {c.comuna || "—"}
                     </Text>
-                  )}
-                  {typeof c.rating === "number" && <Text style={styles.cardSub}>⭐ {c.rating.toFixed(1)}</Text>}
+
+                    {/* ⭐ Mostrar rating si existe */}
+                    {r && r.total_resenas > 0 && (
+                      <Text style={styles.cardSub}>
+                        ⭐ {r.promedio.toFixed(1)} ({r.total_resenas})
+                      </Text>
+                    )}
+
+                    {!!c.deportes?.length && (
+                      <Text style={styles.cardSub}>
+                        Deportes: {c.deportes.join(", ")}
+                        {typeof c.canchas === "number"
+                          ? ` · Canchas: ${c.canchas}`
+                          : ""}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+
+                <View style={styles.cardActions}>
+                  <PrimaryBtn
+                    text="Ver canchas"
+                    onPress={() => {
+                      const complejoId = c.id ?? c.id_complejo;
+                      router.push({
+                        pathname:
+                          "/(cancha)/canchas-por-complejo",
+                        params: {
+                          complejoId: String(complejoId),
+                          nombre: String(c.nombre ?? ""),
+                        },
+                      });
+                    }}
+                  />
                 </View>
               </View>
-              <View style={styles.cardActions}>
-  <PrimaryBtn
-    text="Ver canchas"
-    onPress={() => {
-      const complejoId = c.id ?? c.id_complejo;
-      if (!complejoId) {
-        console.warn("No se encontró ID del complejo", c);
-        return;
-      }
-
-      router.push({
-        pathname: "/(cancha)/canchas-por-complejo", // 👈 usa este si el archivo está dentro de (tabs)
-        // si el archivo está fuera, cambia a: pathname: "/canchas-por-complejo"
-        params: {
-          complejoId: String(complejoId),
-          nombre: String(c.nombre ?? c.nombre_complejo ?? ""),
-        },
-      });
-    }}
-  />
-</View>
-
-            </View>
-          ))}
-          {complejos.length === 0 && (
-            <View style={{ padding: 24, alignItems: "center" }}>
-              <Text style={{ color: "#6b7280" }}>No encontramos complejos que coincidan con tu búsqueda.</Text>
-            </View>
-          )}
+            );
+          })}
         </View>
       )}
     </ScrollView>
@@ -195,68 +280,153 @@ export default function ComplejosScreen() {
 }
 
 /* UI helpers */
-function Segment({ label, active, onPress }:{ label:string; active?:boolean; onPress:()=>void }) {
+function Segment({ label, active, onPress }) {
   return (
-    <TouchableOpacity onPress={onPress} style={[styles.segment, active && styles.segmentActive]}>
-      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
+    <TouchableOpacity
+      onPress={onPress}
+      style={[
+        styles.segment,
+        active && styles.segmentActive,
+      ]}
+    >
+      <Text
+        style={[
+          styles.segmentText,
+          active && styles.segmentTextActive,
+        ]}
+      >
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 }
 
-function DropdownChip({ icon, label, onPress, active }:{
-  icon: keyof typeof Ionicons.glyphMap; label:string; onPress:()=>void; active?:boolean;
-}) {
+function DropdownChip({ icon, label, onPress, active }) {
   return (
-    <TouchableOpacity onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
-      <Ionicons name={icon} size={14} color={active ? "#0ea5a4" : "#64748b"} />
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
-      <Ionicons name="chevron-down" size={14} color={active ? "#0ea5a4" : "#94a3b8"} />
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.chip, active && styles.chipActive]}
+    >
+      <Ionicons
+        name={icon}
+        size={14}
+        color={active ? "#0ea5a4" : "#64748b"}
+      />
+      <Text
+        style={[
+          styles.chipText,
+          active && styles.chipTextActive,
+        ]}
+      >
+        {label}
+      </Text>
+      <Ionicons
+        name="chevron-down"
+        size={14}
+        color={active ? "#0ea5a4" : "#94a3b8"}
+      />
     </TouchableOpacity>
   );
 }
 
-function PrimaryBtn({ text, onPress }:{ text:string; onPress:()=>void }) {
+function PrimaryBtn({ text, onPress }) {
   return (
     <TouchableOpacity onPress={onPress} style={styles.btnPrimary}>
-      <Text style={{ color: "white", fontWeight: "700" }}>{text}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function OutlineBtn({ text, onPress }:{ text:string; onPress:()=>void }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.btnOutline}>
-      <Text style={{ color: "#0ea5a4", fontWeight: "700" }}>{text}</Text>
+      <Text style={{ color: "white", fontWeight: "700" }}>
+        {text}
+      </Text>
     </TouchableOpacity>
   );
 }
 
 /* estilos */
 const styles = StyleSheet.create({
-  header: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10, backgroundColor: "#0d9488" },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 10,
+    backgroundColor: "#0d9488",
+  },
   title: { color: "white", fontSize: 20, fontWeight: "800" },
-  segment: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.2)" },
-  segmentActive: { backgroundColor: "#ffffff" },
-  segmentText: { color: "white", fontWeight: "700" },
-  segmentTextActive: { color: "#0d9488" },
 
   searchWrap: {
-    marginTop: 12, marginBottom: 8,
-    flexDirection: "row", alignItems: "center", gap: 8,
-    borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#f9fafb",
-    paddingHorizontal: 12, borderRadius: 12, height: 46,
+    marginTop: 12,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#f9fafb",
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    height: 46,
   },
-  filtersRow: { paddingHorizontal: 16, marginTop: 4, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  chip: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#f9fafb", paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999 },
-  chipActive: { borderColor: "#99f6e4", backgroundColor: "#ecfeff" },
+
+  filtersRow: {
+    paddingHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#f9fafb",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  chipActive: {
+    borderColor: "#99f6e4",
+    backgroundColor: "#ecfeff",
+  },
   chipText: { color: "#334155", fontWeight: "600" },
   chipTextActive: { color: "#0ea5a4" },
 
-  card: { borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#fff", borderRadius: 12, padding: 14 },
-  roundIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#ecfeff", alignItems: "center", justifyContent: "center" },
-  cardTitle: { fontWeight: "800", fontSize: 16 },
+  card: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 14,
+  },
+
+  roundIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#ecfeff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  cardTitle: {
+    fontWeight: "800",
+    fontSize: 16,
+  },
+
   cardSub: { color: "#6b7280", marginTop: 2 },
-  cardActions: { flexDirection: "row", gap: 10, marginTop: 12 },
-  btnPrimary: { flex: 1, height: 44, borderRadius: 10, backgroundColor: "#0ea5a4", alignItems: "center", justifyContent: "center" },
-  btnOutline: { flex: 1, height: 44, borderRadius: 10, borderWidth: 1, borderColor: "#99f6e4", backgroundColor: "#ecfeff", alignItems: "center", justifyContent: "center" },
+
+  cardActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+
+  btnPrimary: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: "#0ea5a4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

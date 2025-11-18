@@ -2,6 +2,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ResenasAPI, type Resena } from "./api";
+import { http } from "@/src/services/http";
+import type { RatingCancha } from "./utils";
 
 export const hooks = {
   useCreateResena() {
@@ -19,6 +21,19 @@ export const hooks = {
       }) => ResenasAPI.update(args.id_resena, args),
     });
   },
+
+  useRatingsPromedioCanchas() {
+  return useQuery<RatingCancha[]>({
+    queryKey: ["ratings_promedio_canchas"],
+    queryFn: async () => {
+      const { data } = await http.get("/resenas/promedio/canchas");
+      const arr: any[] = Array.isArray(data)
+        ? data
+        : data?.data ?? data?.items ?? [];
+      return arr as RatingCancha[];
+    },
+  });
+},
 
   useMiResenaPorCancha(id_cancha?: number) {
     return useQuery<Resena[]>({
