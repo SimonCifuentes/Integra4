@@ -808,25 +808,7 @@ export default function PerfilScreen() {
           )}
         </Section>
 
-        {/* Reseñas */}
-        <Section title="Reseñas">
-          <TouchableOpacity
-            onPress={() => router.push("/(perfil)/mis-resenas")}
-            style={styles.navRow}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
-              <Ionicons name="star-outline" size={18} color="#0f172a" />
-              <Text style={styles.navRowText}>Mis reseñas</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#0f172a" />
-          </TouchableOpacity>
-        </Section>
+        
 
         {/* Sesión */}
         <Section title="Sesión">

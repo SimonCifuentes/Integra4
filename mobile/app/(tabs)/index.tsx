@@ -1,4 +1,4 @@
-﻿// app/(tabs)/index.tsx
+﻿﻿// app/(tabs)/index.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -29,13 +29,27 @@ import {
 const { width } = Dimensions.get("window");
 const TEAL = "#0ea5a4";
 
-type Slide = { id: string; title: string; subtitle?: string; image: any };
+/* -------------------------------------------------------------------------- */
+/*                                  Tipos                                     */
+/* -------------------------------------------------------------------------- */
+
+type Slide = {
+  id: number;
+  title: string;
+  subtitle?: string;
+  description?: string;
+  image?: { uri: string };
+};
 
 type RatingResumen = {
   id_cancha: number;
   promedio: number;
   total_resenas: number;
 };
+
+/* -------------------------------------------------------------------------- */
+/*                                Carousel Hero                               */
+/* -------------------------------------------------------------------------- */
 
 function Carousel({
   slides,
@@ -75,7 +89,13 @@ function Carousel({
         style={{ width, height: 180 }}
       >
         {slides.map((s) => (
-          <View key={s.id} style={{ width, height: 180, paddingHorizontal: 16 }}>
+          <View
+            key={s.id}
+            style={{
+              width,
+              paddingHorizontal: 16,
+            }}
+          >
             <View
               style={{
                 flex: 1,
@@ -84,16 +104,18 @@ function Carousel({
                 backgroundColor: "#0ea5e9",
               }}
             >
-              <RNImage
-                source={s.image}
-                resizeMode="cover"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  position: "absolute",
-                  opacity: 0.9,
-                }}
-              />
+              {s.image && (
+                <RNImage
+                  source={s.image}
+                  resizeMode="cover"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    position: "absolute",
+                    opacity: 0.9,
+                  }}
+                />
+              )}
               <View
                 style={{
                   flex: 1,
@@ -102,6 +124,17 @@ function Carousel({
                   justifyContent: "flex-end",
                 }}
               >
+                {s.subtitle && (
+                  <Text
+                    style={{
+                      color: "#e0f2fe",
+                      fontSize: 12,
+                      marginBottom: 2,
+                    }}
+                  >
+                    {s.subtitle}
+                  </Text>
+                )}
                 <Text
                   style={{
                     color: "#fff",
@@ -111,21 +144,28 @@ function Carousel({
                 >
                   {s.title}
                 </Text>
-                {s.subtitle ? (
-                  <Text style={{ color: "#e5e7eb", fontSize: 12 }}>
-                    {s.subtitle}
+                {s.description && (
+                  <Text
+                    style={{
+                      color: "#e5e7eb",
+                      fontSize: 13,
+                      marginTop: 4,
+                    }}
+                  >
+                    {s.description}
                   </Text>
-                ) : null}
+                )}
               </View>
             </View>
           </View>
         ))}
       </ScrollView>
 
+      {/* dots */}
       <View
         style={{
           position: "absolute",
-          bottom: 10,
+          bottom: 12,
           left: 0,
           right: 0,
           flexDirection: "row",
@@ -149,42 +189,49 @@ function Carousel({
   );
 }
 
-export default function Home() {
+/* -------------------------------------------------------------------------- */
+/*                                   Home                                     */
+/* -------------------------------------------------------------------------- */
+
+export default function HomeScreen() {
   const { user } = useAuth();
 
   const slides: Slide[] = [
     {
-      id: "logo",
-      title: "SportHub",
-      subtitle: "Reserva, paga y juega en minutos",
-      image: require("@/assets/images/logo_principal.png"),
-    },
-    {
-      id: "centro",
-      title: "Centro de Temuco",
-      subtitle: "Canchas cercanas a tu ubicación",
-      image: require("@/assets/images/logo_principal.png"),
-    },
-    {
-      id: "becker",
-      title: "Estadio Germán Becker",
-      subtitle: "Zonas deportivas destacadas",
-      image: require("@/assets/images/logo_principal.png"),
-    },
-    {
-      id: "nielol",
+      id: 1,
       title: "Cerro Ñielol",
       subtitle: "Encuentra canchas por sector",
-      image: require("@/assets/images/logo_principal.png"),
+      description: "Descubre canchas cerca de ti y reserva en segundos.",
+      image: {
+        uri: "https://images.pexels.com/photos/399187/pexels-photo-399187.jpeg?auto=compress&cs=tinysrgb&w=800",
+      },
+    },
+    {
+      id: 2,
+      title: "Organiza el partido",
+      subtitle: "Reserva fácil y rápido",
+      description: "Elige cancha, horario y listo. Nosotros nos encargamos.",
+      image: {
+        uri: "https://images.pexels.com/photos/46798/the-ball-stadion-football-the-pitch-46798.jpeg?auto=compress&cs=tinysrgb&w=800",
+      },
+    },
+    {
+      id: 3,
+      title: "Descubre nuevos complejos",
+      subtitle: "Explora por deporte o sector",
+      description: "Pistas de fútbol, pádel, básquet y mucho más.",
+      image: {
+        uri: "https://images.pexels.com/photos/114296/pexels-photo-114296.jpeg?auto=compress&cs=tinysrgb&w=800",
+      },
     },
   ];
 
   /* ---------------- DATA: canchas, complejos y ratings ---------------- */
 
+  // Ultra defensivo: dejamos que la API use su page_size por defecto
   const { data: canchasData, isLoading: loadingCanchas } = useCanchas({
     page: 1,
-    page_size: 200,
-  });
+  } as any);
 
   const canchasList: any[] = useMemo(
     () => ((canchasData as any)?.items ?? canchasData ?? []) as any[],
@@ -193,15 +240,14 @@ export default function Home() {
 
   const { data: complejosData, isLoading: loadingComplejos } = useComplejos({
     page: 1,
-    page_size: 100,
-  });
+  } as any);
 
   const complejosList: any[] = useMemo(
     () => ((complejosData as any)?.items ?? complejosData ?? []) as any[],
     [complejosData]
   );
 
-  // 🔹 AQUÍ LEEMOS DIRECTO EL ENDPOINT DE RATINGS
+  // 🔹 ratings promedio por cancha
   const { data: ratingsData } = useQuery<RatingResumen[]>({
     queryKey: ["ratings_promedio_canchas_home"],
     queryFn: async () => {
@@ -261,8 +307,7 @@ export default function Home() {
     () =>
       canchasList.map((c: any) => ({
         id_cancha: Number(c.id_cancha),
-        id_complejo:
-          c.id_complejo != null ? Number(c.id_complejo) : null,
+        id_complejo: c.id_complejo != null ? Number(c.id_complejo) : null,
       })),
     [canchasList]
   );
@@ -272,9 +317,9 @@ export default function Home() {
       ratingsData && canchasMin.length
         ? calcularRatingPorComplejo(
             canchasMin,
-            (ratingsData as unknown as RatingCancha[]) ?? []
+            ratingsData as unknown as RatingCancha[]
           )
-        : new Map(),
+        : new Map<number, RatingCancha>(),
     [ratingsData, canchasMin]
   );
 
@@ -293,7 +338,7 @@ export default function Home() {
           _rating_total_resenas: r?.total_resenas ?? 0,
         };
       })
-      .filter((c) => c._id_resuelto) // que tengan id resuelto
+      .filter((c) => c._id_resuelto)
       .sort((a, b) => {
         // primero los que tienen reseñas
         const aHas = a._rating_total_resenas > 0;
@@ -306,7 +351,6 @@ export default function Home() {
         return b._rating_total_resenas - a._rating_total_resenas;
       });
 
-    // si ninguno tiene reseñas, mostramos simplemente los primeros 3
     if (!enriched.some((e: any) => e._rating_total_resenas > 0)) {
       return complejosList.slice(0, 3).map((c: any) => ({
         ...c,
@@ -319,100 +363,96 @@ export default function Home() {
     return enriched.slice(0, 3);
   }, [complejosList, ratingsPorComplejo]);
 
-  const isLoading = loadingCanchas || loadingComplejos;
+  /* ---------------------------------------------------------------------- */
 
-  /* ---------------- RENDER ---------------- */
+  const loadingAny = loadingCanchas || loadingComplejos;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: "#fff" }}>
-      {/* Header + Carrusel */}
-      <View style={{ padding: 16, backgroundColor: "#0d9488" }}>
-        <Text style={{ fontSize: 20, fontWeight: "600", color: "#fff" }}>
-          Hola, {user?.name ?? user?.email ?? "Jugador"} 👋
+    <ScrollView
+      style={{ flex: 1, backgroundColor: "#ffffff" }}
+      contentContainerStyle={{ paddingBottom: 32 }}
+    >
+      {/* Header */}
+      <View
+        style={{
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: 4,
+          backgroundColor: "#0f766e",
+        }}
+      >
+        <Text style={{ color: "#e0f2f1", fontSize: 16 }}>
+          Hola, {user?.email ?? "visitante"} 👋
         </Text>
-        <Text style={{ fontSize: 14, color: "#e0f2f1" }}>
+        <Text style={{ color: "#ccfbf1", fontSize: 14 }}>
           ¿Listo para reservar tu próxima cancha?
         </Text>
-        <Carousel slides={slides} />
       </View>
+
+      {/* Hero */}
+      <Carousel slides={slides} />
 
       {/* Buscador */}
-      <View style={{ padding: 16 }}>
-        <TextInput
-          placeholder="Buscar canchas por deporte o ubicación..."
+      <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
+        <View
           style={{
-            backgroundColor: "#f1f5f9",
-            borderRadius: 12,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
+            borderRadius: 16,
             borderWidth: 1,
-            borderColor: "#cbd5e1",
+            borderColor: "#e2e8f0",
+            backgroundColor: "#f8fafc",
+            paddingHorizontal: 12,
+            paddingVertical: 8,
           }}
-        />
+        >
+          <TextInput
+            placeholder="Buscar canchas por deporte o ubicación..."
+            placeholderTextColor="#94a3b8"
+            style={{
+              fontSize: 15,
+              paddingVertical: 4,
+            }}
+          />
+        </View>
       </View>
 
-      {/* Acceso rápido */}
+      {/* Acciones rápidas */}
       <View
         style={{
           flexDirection: "row",
-          justifyContent: "space-around",
-          marginBottom: 20,
+          paddingHorizontal: 16,
+          marginTop: 16,
+          marginBottom: 8,
+          gap: 8,
         }}
       >
-        <TouchableOpacity
-          style={{
-            backgroundColor: "#e0f2fe",
-            padding: 20,
-            borderRadius: 16,
-            alignItems: "center",
-            width: "28%",
-          }}
+        <QuickButton
+          label="Explorar"
+          color="#dbeafe"
+          textColor="#1d4ed8"
           onPress={() => router.push("/(tabs)/canchas")}
-        >
-          <Text style={{ fontWeight: "600", color: "#0369a1" }}>
-            Explorar
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={{
-            backgroundColor: "#fef9c3",
-            padding: 20,
-            borderRadius: 16,
-            alignItems: "center",
-            width: "28%",
-          }}
+        />
+        <QuickButton
+          label="Reservas"
+          color="#fef9c3"
+          textColor="#92400e"
           onPress={() => router.push("/(reservar)/mis-reservas")}
-        >
-          <Text style={{ fontWeight: "600", color: "#854d0e" }}>
-            Reservas
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={{
-            backgroundColor: "#ede9fe",
-            padding: 20,
-            borderRadius: 16,
-            alignItems: "center",
-            width: "28%",
-          }}
-          onPress={() => router.push("/perfil")}
-        >
-          <Text style={{ fontWeight: "600", color: "#6d28d9" }}>
-            Perfil
-          </Text>
-        </TouchableOpacity>
+        />
+        <QuickButton
+          label="Perfil"
+          color="#f3e8ff"
+          textColor="#6b21a8"
+          onPress={() => router.push("/(tabs)/perfil")}
+        />
       </View>
 
-      {isLoading && (
-        <View style={{ paddingVertical: 8 }}>
+      {loadingAny && (
+        <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
           <ActivityIndicator />
         </View>
       )}
 
       {/* Canchas destacadas */}
-      <View style={{ paddingHorizontal: 16, marginBottom: 24 }}>
+      <View style={{ paddingHorizontal: 16, marginTop: 16, marginBottom: 24 }}>
         <View
           style={{
             flexDirection: "row",
@@ -440,7 +480,6 @@ export default function Home() {
                 height: 120,
                 backgroundColor: "#f1f5f9",
                 borderRadius: 12,
-                marginRight: 12,
                 justifyContent: "center",
                 alignItems: "center",
                 paddingHorizontal: 12,
@@ -455,9 +494,9 @@ export default function Home() {
               <TouchableOpacity
                 key={c.id_cancha}
                 style={{
-                  width: 180,
+                  width: 220,
                   height: 120,
-                  backgroundColor: "#f1f5f9",
+                  backgroundColor: "#f8fafc",
                   borderRadius: 12,
                   marginRight: 12,
                   justifyContent: "center",
@@ -465,34 +504,24 @@ export default function Home() {
                 }}
                 onPress={() =>
                   router.push({
-                    pathname: "/(cancha)/canchas-por-complejo",
+                    pathname: "/(cancha)/reserva",
                     params: {
-                      complejoId: String(c.id_complejo),
-                      nombre: String(c.nombre_complejo ?? ""),
+                      canchaId: String(c.id_cancha),
                     },
                   })
                 }
               >
-                <Text style={{ fontWeight: "600" }}>
-                  {c.nombre ?? c.tipo ?? "Cancha"}
-                </Text>
+                <Text style={{ fontWeight: "700" }}>{c.nombre}</Text>
                 <Text style={{ fontSize: 12, color: "#64748b" }}>
-                  {c.deporte ?? "Deporte"} / {c.sector ?? "—"}
+                  {c.deporte ?? "Deporte"} · {c.superficie ?? "Superficie"}
                 </Text>
-                {c._rating_total_resenas > 0 && (
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      marginTop: 4,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ fontSize: 12, color: "#0f172a" }}>
-                      ⭐ {c._rating_promedio.toFixed(1)} (
-                      {c._rating_total_resenas})
-                    </Text>
-                  </View>
-                )}
+                <Text style={{ marginTop: 4, fontSize: 12 }}>
+                  ⭐{" "}
+                  {c._rating_promedio?.toFixed
+                    ? c._rating_promedio.toFixed(1)
+                    : c._rating_promedio}{" "}
+                  ({c._rating_total_resenas} reseñas)
+                </Text>
               </TouchableOpacity>
             ))
           )}
@@ -556,31 +585,24 @@ export default function Home() {
                     pathname: "/(cancha)/canchas-por-complejo",
                     params: {
                       complejoId: String(c._id_resuelto),
-                      nombre: String(c.nombre ?? c.nombre_complejo ?? ""),
+                      nombre: c.nombre,
                     },
                   })
                 }
               >
-                <Text style={{ fontWeight: "600" }}>
-                  {c.nombre ?? c.nombre_complejo ?? "Complejo"}
-                </Text>
-                <Text style={{ fontSize: 12, color: "#64748b" }}>
-                  {c.direccion ?? "Dirección desconocida"}
-                </Text>
-                {c._rating_total_resenas > 0 && (
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      marginTop: 4,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ fontSize: 12, color: "#0f172a" }}>
-                      ⭐ {c._rating_promedio.toFixed(1)} (
-                      {c._rating_total_resenas})
-                    </Text>
-                  </View>
+                <Text style={{ fontWeight: "700" }}>{c.nombre}</Text>
+                {c.direccion && (
+                  <Text style={{ fontSize: 12, color: "#64748b" }}>
+                    {c.direccion}
+                  </Text>
                 )}
+                <Text style={{ marginTop: 4, fontSize: 12 }}>
+                  ⭐{" "}
+                  {c._rating_promedio?.toFixed
+                    ? c._rating_promedio.toFixed(1)
+                    : c._rating_promedio}{" "}
+                  ({c._rating_total_resenas} reseñas)
+                </Text>
               </TouchableOpacity>
             ))
           )}
@@ -588,31 +610,72 @@ export default function Home() {
       </View>
 
       {/* Próximos eventos (placeholder) */}
-      <View style={{ paddingHorizontal: 16, marginBottom: 24 }}>
-        <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>
-          Próximos eventos
-        </Text>
-        {[1, 2].map((i) => (
-          <TouchableOpacity
-            key={i}
-            style={{
-              backgroundColor: "#f8fafc",
-              borderWidth: 1,
-              borderColor: "#e2e8f0",
-              borderRadius: 12,
-              padding: 16,
-              marginBottom: 12,
-            }}
-          >
-            <Text style={{ fontWeight: "600" }}>
-              Evento deportivo {i}
-            </Text>
-            <Text style={{ fontSize: 12, color: "#64748b" }}>
-              Domingo 18:00 · Cancha {i}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ fontSize: 18, fontWeight: "700" }}>
+            Próximos eventos
+          </Text>
+        </View>
+
+        <View style={{ gap: 8 }}>
+          {[1, 2].map((i) => (
+            <TouchableOpacity
+              key={i}
+              style={{
+                backgroundColor: "#f9fafb",
+                borderRadius: 12,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+              }}
+            >
+              <Text style={{ fontWeight: "600" }}>
+                Evento deportivo {i}
+              </Text>
+              <Text style={{ fontSize: 12, color: "#64748b" }}>
+                Domingo 18:00 · Cancha {i}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
     </ScrollView>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*                             Componentes pequeños                            */
+/* -------------------------------------------------------------------------- */
+
+function QuickButton({
+  label,
+  color,
+  textColor,
+  onPress,
+}: {
+  label: string;
+  color: string;
+  textColor: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={{
+        flex: 1,
+        height: 60,
+        borderRadius: 16,
+        backgroundColor: color,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+      onPress={onPress}
+    >
+      <Text style={{ color: textColor, fontWeight: "700" }}>{label}</Text>
+    </TouchableOpacity>
   );
 }

@@ -23,13 +23,13 @@ type CanchaBE = {
   id_cancha: number;
   nombre: string;
   deporte?: string;
-  tipo?: string; // ej: "Fútbol 7", "Pádel"
-  superficie?: string; // ej: "Pasto sintético"
-  precio_desde?: number; // CLP/hora
+  tipo?: string;
+  superficie?: string;
+  precio_desde?: number;
   disponible_hoy?: boolean;
   id_complejo?: number;
   nombre_complejo?: string;
-  sector?: string; // o comuna/barrio
+  sector?: string;
 };
 
 type SlotBE = {
@@ -45,7 +45,6 @@ type RatingResumen = {
   total_resenas: number;
 };
 
-// 👇 tipo de foto de cancha según tu swagger
 type FotoCancha = {
   id_foto: number;
   id_cancha: number;
@@ -82,7 +81,6 @@ function formatCLP(n?: number | null) {
     return `$${(n ?? 0).toLocaleString("es-CL")}`;
   }
 }
-
 function normalize(s?: string | number | null) {
   if (s == null) return "";
   return String(s)
@@ -91,7 +89,6 @@ function normalize(s?: string | number | null) {
     .toLowerCase()
     .trim();
 }
-
 function inferDeporte(item: CanchaBE): string {
   const d = item.deporte;
   if (d && normalize(d)) return d;
@@ -112,9 +109,8 @@ export default function CanchasScreen() {
   const [q, setQ] = useState("");
   const [fDeporte, setFDeporte] = useState<string | null>(null);
   const [fSector, setFSector] = useState<string | null>(null);
-  const [fFecha, setFFecha] = useState<string | null>(null); // "Hoy" activa disponible_hoy
+  const [fFecha, setFFecha] = useState<string | null>(null);
 
-  // Slots inline
   const [openSlotsId, setOpenSlotsId] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const fechaYMD = toYMD(selectedDate);
@@ -136,13 +132,12 @@ export default function CanchasScreen() {
 
   const { data: slots } = useSlots(openSlotsId ?? undefined, fechaYMD, 60);
 
-  // Reserva modal (lo conservamos por si lo usas en otro flujo)
   const [selectedCancha, setSelectedCancha] = useState<CanchaBE | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
   const items: CanchaBE[] = (data?.items ?? []) as CanchaBE[];
 
-  // ---------- NUEVO: mapa de fotos por cancha ----------
+  // ------- fotos de cancha ---------
   const [fotosMap, setFotosMap] = useState<Record<number, string | null>>({});
 
   useEffect(() => {
@@ -159,9 +154,7 @@ export default function CanchasScreen() {
       await Promise.all(
         items.map(async (c) => {
           try {
-            const { data } = await http.get(
-              `/canchas/${c.id_cancha}/fotos`
-            );
+            const { data } = await http.get(`/canchas/${c.id_cancha}/fotos`);
             const arr: FotoCancha[] = Array.isArray(data)
               ? data
               : data?.data ?? data?.items ?? [];
@@ -170,8 +163,7 @@ export default function CanchasScreen() {
               arr.find((f) => f.orden === 1) ?? arr[0] ?? null;
 
             nuevoMapa[c.id_cancha] = fotoPrincipal?.url_foto ?? null;
-          } catch (e) {
-            // si falla, simplemente no mostramos foto
+          } catch {
             nuevoMapa[c.id_cancha] = null;
           }
         })
@@ -188,9 +180,8 @@ export default function CanchasScreen() {
       cancelled = true;
     };
   }, [items]);
-  // -----------------------------------------------------
 
-  // ---------- ratings promedio por cancha ----------
+  // ------- ratings ---------
   const { data: ratingsData } = useQuery({
     queryKey: ["ratings_promedio_canchas"],
     queryFn: async () => {
@@ -209,7 +200,6 @@ export default function CanchasScreen() {
     });
     return map;
   }, [ratingsData]);
-  // --------------------------------------------------------
 
   const deportesOpciones = useMemo(() => {
     const set = new Set<string>();
@@ -278,7 +268,6 @@ export default function CanchasScreen() {
         </Text>
       </View>
 
-      {/* Buscador */}
       <View style={{ paddingHorizontal: 16 }}>
         <View style={styles.searchWrap}>
           <Ionicons name="search-outline" size={18} color="#64748b" />
@@ -296,7 +285,6 @@ export default function CanchasScreen() {
         </View>
       </View>
 
-      {/* Filtros */}
       <View style={styles.filtersRow}>
         <DropdownChip
           icon="football-outline"
@@ -417,12 +405,11 @@ export default function CanchasScreen() {
     const deporteUI = inferDeporte(item) || "—";
     const isOpen = openSlotsId === item.id_cancha;
 
-    const rating = ratingsByCancha.get(item.id_cancha); // rating
-    const fotoUrl = fotosMap[item.id_cancha] ?? null; // url de la foto
+    const rating = ratingsByCancha.get(item.id_cancha);
+    const fotoUrl = fotosMap[item.id_cancha] ?? null;
 
     return (
       <View style={styles.card}>
-        {/* Imagen de la cancha */}
         {fotoUrl ? (
           <Image
             source={{ uri: fotoUrl }}
@@ -444,7 +431,6 @@ export default function CanchasScreen() {
         </View>
 
         <View style={styles.cardBody}>
-          {/* Rating solo si tiene reseñas */}
           {rating && rating.total_resenas > 0 && (
             <View style={styles.ratingRow}>
               <Ionicons name="star" size={16} color="#f59e0b" />
@@ -483,20 +469,18 @@ export default function CanchasScreen() {
         </View>
 
         <View style={styles.cardActionsRow}>
+          {/* BOTÓN RESERVAR -> flujo de reserva de esa cancha */}
           <TouchableOpacity
             style={styles.btnGhost}
             onPress={() =>
               router.push({
-                pathname: "/canchas-por-complejo",
-                params: {
-                  complejoId: String(item.id_complejo ?? ""),
-                  nombre: item.nombre_complejo ?? "",
-                },
+                pathname: "/(reservar)/reservar",
+                params: { canchaId: String(item.id_cancha) },
               })
             }
           >
-            <Ionicons name="business-outline" size={16} color={TEAL} />
-            <Text style={styles.btnGhostTxt}>Ver complejo</Text>
+            <Ionicons name="calendar-outline" size={16} color={TEAL} />
+            <Text style={styles.btnGhostTxt}>Reservar</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -510,7 +494,6 @@ export default function CanchasScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Panel de horarios inline */}
         {isOpen && (
           <View style={styles.slotsCard}>
             <View style={styles.dayRow}>
@@ -627,7 +610,7 @@ export default function CanchasScreen() {
   );
 }
 
-/* ---------- UI helpers ---------- */
+/* helpers UI */
 function DropdownChip({
   icon,
   label,
@@ -646,14 +629,8 @@ function DropdownChip({
       onPress={onPress}
       style={[styles.chip, active && styles.chipActive]}
     >
-      <Ionicons
-        name={icon}
-        size={14}
-        color={active ? TEAL : "#64748b"}
-      />
-      <Text
-        style={[styles.chipText, active && styles.chipTextActive]}
-      >
+      <Ionicons name={icon} size={14} color={active ? TEAL : "#64748b"} />
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>
         {label}
       </Text>
       {typeof count === "number" && (
@@ -693,7 +670,7 @@ function EmptyState({ text }: { text: string }) {
   );
 }
 
-/* ---------- estilos ---------- */
+/* estilos */
 const styles = StyleSheet.create({
   headerTop: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
   headerTitle: { fontSize: 18, fontWeight: "800", color: "#111827" },
@@ -756,7 +733,6 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
 
-  // imagen de la cancha
   cardImage: {
     width: "100%",
     height: 140,
@@ -790,7 +766,6 @@ const styles = StyleSheet.create({
   cardBody: { marginBottom: 10 },
   text: { color: "#374151", marginBottom: 4 },
 
-  // rating
   ratingRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -838,7 +813,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // Slots inline
   slotsCard: {
     marginTop: 10,
     borderTopWidth: 1,

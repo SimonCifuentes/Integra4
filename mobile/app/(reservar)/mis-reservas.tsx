@@ -7,6 +7,7 @@ import {
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getItemAsync } from "expo-secure-store";
+import { notifyLocal } from "@/src/services/notifications"; // 👈 NUEVO
 
 const API_URL =
   process.env.EXPO_PUBLIC_API_URL ||
@@ -116,6 +117,11 @@ const isCancelled = (s?: string) => {
   return k === "cancelled" || k === "cancelada" || k === "canceled";
 };
 
+const isConfirmed = (s?: string) => {
+  const k = (s ?? "").toLowerCase();
+  return k === "confirmed" || k === "confirmada";
+};
+
 function toDateSafe(v?: string) {
   if (!v) return undefined;
   const d = new Date(v);
@@ -130,6 +136,47 @@ function composeReservaDateTime(r: Reserva): Date | undefined {
   // Evita zonas: crea fecha local consistente
   const dt = new Date(`${date}T${time}:00`);
   return isNaN(dt.getTime()) ? undefined : dt;
+}
+
+/**
+ * Detecta reservas que pasaron a estado "CONFIRMADA" entre prev y next
+ * y dispara una notificación local por cada una.
+ */
+async function detectNewConfirmations(prev: Reserva[] | null, next: Reserva[]) {
+  if (!next || next.length === 0) return;
+
+  const prevMap = new Map<string, Reserva>();
+  prev?.forEach((r) => prevMap.set(r.id, r));
+
+  const newlyConfirmed = next.filter((r) => {
+    if (!isConfirmed(r.status)) return false;
+    const before = prevMap.get(r.id);
+    if (!before) return false; // solo notificar si ya la conocíamos antes
+    return !isConfirmed(before.status);
+  });
+
+  if (newlyConfirmed.length === 0) return;
+
+  for (const r of newlyConfirmed) {
+    const complejo = r.venue?.name ?? "Tu reserva";
+    const cancha =
+      r.cancha?.name != null && r.cancha.name !== ""
+        ? ` • Cancha ${r.cancha.name}`
+        : "";
+    const when =
+      r.date && r.startTime
+        ? ` para el ${r.date} a las ${r.startTime}`
+        : "";
+
+    const title = "Reserva confirmada ✅";
+    const body = `${complejo}${cancha} fue confirmada${when}.`;
+
+    try {
+      await notifyLocal(title, body);
+    } catch (err) {
+      console.log("Error enviando notificación de confirmación:", err);
+    }
+  }
 }
 
 /* ===== UI helpers ===== */
@@ -220,12 +267,20 @@ export default function MisReservasScreen() {
   const [sortKey, setSortKey] = React.useState<SortKey>("reservation");
   const [sortDir, setSortDir] = React.useState<SortDir>("desc");
 
+  // Para detectar cambios de estado
+  const prevDataRef = React.useRef<Reserva[] | null>(null);
+  const firstLoadRef = React.useRef(true);
+
   const load = React.useCallback(async () => {
     try {
       setError(null);
       setLoading(true);
       const d = await fetchMisReservas();
+
+      // Primera carga: solo seteamos, no notificamos
       setData(d);
+      prevDataRef.current = d;
+      firstLoadRef.current = false;
     } catch (e: any) {
       setError(e?.message || "Error al cargar");
       setData([]);
@@ -238,7 +293,14 @@ export default function MisReservasScreen() {
     try {
       setRefreshing(true);
       const d = await fetchMisReservas();
+
+      // En refrescos: detectar nuevas confirmaciones
+      if (!firstLoadRef.current) {
+        await detectNewConfirmations(prevDataRef.current, d);
+      }
+
       setData(d);
+      prevDataRef.current = d;
     } catch (e: any) {
       setError(e?.message || "Error al actualizar");
     } finally {

@@ -15,6 +15,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as SecureStore from "expo-secure-store";
 import { useMutation } from "@tanstack/react-query";
+import { notifyLocal, scheduleReminder } from "@/src/services/notifications"; // 👈 notis
 
 const API_URL =
   process.env.EXPO_PUBLIC_API_URL ||
@@ -177,8 +178,51 @@ export default function ReservarTab() {
       notas?: string | null;
     }) => postJSON("/reservas", payload),
 
-    onSuccess: (_created: any, vars) => {
+    // 👇 async para usar await con las notis
+    onSuccess: async (_created: any, vars) => {
       const msg = `Reserva creada para el ${vars.fecha} de ${vars.inicio} a ${vars.fin}.`;
+
+      // 🔔 Notificación inmediata
+      try {
+        await notifyLocal("Reserva creada ✅", msg);
+      } catch (err) {
+        console.log("Error enviando notificación inmediata:", err);
+      }
+
+      // 🔔 RECORDATORIOS
+      try {
+        const startDate = ymdHmToDate(vars.fecha, vars.inicio);
+        const canchaName = `Cancha ${vars.id_cancha}`;
+
+        // 1 día antes
+        const reminder1DayBefore = new Date(
+          startDate.getTime() - 24 * 60 * 60 * 1000
+        );
+
+        // 3 horas antes
+        const reminder3HoursBefore = new Date(
+          startDate.getTime() - 3 * 60 * 60 * 1000
+        );
+
+        // 1 hora antes
+        const reminder1HourBefore = new Date(
+          startDate.getTime() - 1 * 60 * 60 * 1000
+        );
+
+        if (reminder1DayBefore.getTime() > Date.now()) {
+          await scheduleReminder(reminder1DayBefore, canchaName);
+        }
+        if (reminder3HoursBefore.getTime() > Date.now()) {
+          await scheduleReminder(reminder3HoursBefore, canchaName);
+        }
+        if (reminder1HourBefore.getTime() > Date.now()) {
+          await scheduleReminder(reminder1HourBefore, canchaName);
+        }
+      } catch (err) {
+        console.log("Error programando recordatorios:", err);
+      }
+
+      // 🔁 Lógica original de feedback + navegación
       if (Platform.OS === "web" && typeof window !== "undefined") {
         window.alert(msg);
         router.replace("/(reservar)/mis-reservas");
@@ -215,7 +259,6 @@ export default function ReservarTab() {
     }) => postJSON<Cotizacion>("/reservas/cotizar", payload),
     onSuccess: async (resp, vars) => {
       setQuote(resp);
-      // persistimos para que mis-reservas pueda mostrar el valor estimado si el backend aún no lo calcula
       const key = quoteKey(vars.id_cancha, vars.fecha, vars.inicio, vars.fin);
       const current = await loadQuotes();
       current[key] = { total: resp.total, at: Date.now() };
@@ -287,7 +330,6 @@ export default function ReservarTab() {
     const inicio = toHM(startTime);
     const fin = toHM(endTime);
 
-    // Validación simple igual que en confirmar
     const startMillis = hmToMillis(inicio);
     const endMillis = hmToMillis(fin);
     if (endMillis <= startMillis) {
@@ -427,6 +469,11 @@ function strToTodayTime(hm: string) {
 function hmToMillis(hm: string) {
   const [h, m] = hm.split(":").map((x) => parseInt(x, 10));
   return (h * 60 + m) * 60 * 1000;
+}
+function ymdHmToDate(fecha: string, hm: string) {
+  const [y, m, d] = fecha.split("-").map((x) => parseInt(x, 10));
+  const [h, min] = hm.split(":").map((x) => parseInt(x, 10));
+  return new Date(y, (m || 1) - 1, d || 1, h || 0, min || 0, 0, 0);
 }
 function toCLP(n: number) {
   return Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(n);

@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { notifyLocal } from "@/src/services/notifications"; // 👈 NUEVO
 
 const API_URL =
   process.env.EXPO_PUBLIC_API_URL ||
@@ -164,8 +165,7 @@ async function getMyExistingReview(params: {
 
   // Buscamos la que sea del usuario actual
   const mine =
-    arr.find((x) => Number(x?.id_usuario ?? x?.usuario_id ?? x?.user?.id) === meId) ??
-    null;
+    arr.find((x) => Number(x?.id_usuario ?? x?.usuario_id ?? x?.user?.id) === meId) ?? null;
 
   if (!mine) return null;
 
@@ -213,7 +213,9 @@ export default function ResenasScreen() {
     const idReservaNum = Number(reservationId);
     const idCanchaNum = Number(canchaId);
     const idComplejoNum = Number(venueId);
-    const hasContext = (!isNaN(idCanchaNum) && idCanchaNum > 0) || (!isNaN(idComplejoNum) && idComplejoNum > 0);
+    const hasContext =
+      (!isNaN(idCanchaNum) && idCanchaNum > 0) ||
+      (!isNaN(idComplejoNum) && idComplejoNum > 0);
     return !!token && idReservaNum > 0 && rating >= 1 && rating <= 5 && hasContext;
   }, [token, reservationId, rating, canchaId, venueId]);
 
@@ -236,6 +238,16 @@ export default function ResenasScreen() {
           calificacion: rating,
           comentario: comment.trim(),
         });
+
+        // 🔔 Noti para actualización
+        try {
+          await notifyLocal(
+            "Reseña actualizada ⭐",
+            "Tu reseña fue actualizada correctamente."
+          );
+        } catch (err) {
+          console.log("Error enviando notificación de reseña actualizada:", err);
+        }
       } else {
         // intentar crear
         await mCreate.mutateAsync({
@@ -246,6 +258,16 @@ export default function ResenasScreen() {
           calificacion: rating,
           comentario: comment.trim(),
         });
+
+        // 🔔 Noti para creación
+        try {
+          await notifyLocal(
+            "¡Gracias por tu reseña! ⭐",
+            "Tu reseña fue enviada correctamente."
+          );
+        } catch (err) {
+          console.log("Error enviando notificación de reseña creada:", err);
+        }
       }
 
       await Promise.allSettled([
@@ -279,13 +301,26 @@ export default function ResenasScreen() {
               comentario: comment.trim(),
             });
 
+            // 🔔 Noti también en este flujo
+            try {
+              await notifyLocal(
+                "Reseña actualizada ⭐",
+                "Ya tenías una reseña y fue actualizada con tu nuevo contenido."
+              );
+            } catch (err) {
+              console.log("Error enviando notificación de reseña upsert:", err);
+            }
+
             await Promise.allSettled([
               queryClient.invalidateQueries({ queryKey: ["mis-reservas"] }),
               queryClient.invalidateQueries({ queryKey: ["resenas"] }),
             ]);
-            const okMsg = "Ya tenías una reseña para esta cancha; se actualizó con tu nuevo contenido.";
+            const okMsg =
+              "Ya tenías una reseña para esta cancha; se actualizó con tu nuevo contenido.";
             if (Platform.OS === "web") window.alert(okMsg); else Alert.alert("Listo", okMsg);
-            router.canGoBack() ? router.back() : router.replace("/(perfil)/mis-resenas");
+            router.canGoBack()
+              ? router.back()
+              : router.replace("/(perfil)/mis-resenas");
             return;
           }
         } catch {
@@ -307,7 +342,9 @@ export default function ResenasScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(perfil)/mis-resenas"))}
+          onPress={() =>
+            (router.canGoBack() ? router.back() : router.replace("/(perfil)/mis-resenas"))
+          }
           style={styles.backBtn}
         >
           <Ionicons name="arrow-back" size={22} color={TEAL} />
@@ -321,7 +358,8 @@ export default function ResenasScreen() {
         <View style={styles.card}>
           <Text style={styles.complejo}>{venueName}</Text>
           <Text style={styles.fecha}>
-            {date ? `${date}` : ""} {startTime ? `• ${startTime}` : ""} {endTime ? `– ${endTime}` : ""}
+            {date ? `${date}` : ""} {startTime ? `• ${startTime}` : ""}{" "}
+            {endTime ? `– ${endTime}` : ""}
           </Text>
         </View>
 
@@ -359,10 +397,14 @@ export default function ResenasScreen() {
           onPress={handleSubmit}
           disabled={isPending}
         >
-          {isPending ? <ActivityIndicator color="#fff" /> : (
+          {isPending ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
             <>
               <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
-              <Text style={styles.btnPrimaryText}>{isEditing ? "Guardar cambios" : "Guardar reseña"}</Text>
+              <Text style={styles.btnPrimaryText}>
+                {isEditing ? "Guardar cambios" : "Guardar reseña"}
+              </Text>
             </>
           )}
         </TouchableOpacity>
@@ -375,25 +417,68 @@ export default function ResenasScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   header: {
-    flexDirection: "row", alignItems: "center", paddingHorizontal: 16,
-    paddingTop: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: "#e5e7eb", backgroundColor: "#ffffff",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+    backgroundColor: "#ffffff",
   },
-  headerTitle: { flex: 1, textAlign: "center", fontSize: 18, fontWeight: "900", color: "#0f172a" },
+  headerTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#0f172a",
+  },
   backBtn: { width: 40, height: 40, justifyContent: "center", alignItems: "center" },
-  card: { backgroundColor: "#ecfeff", borderColor: "#99f6e4", borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 16 },
+  card: {
+    backgroundColor: "#ecfeff",
+    borderColor: "#99f6e4",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
   complejo: { fontSize: 18, fontWeight: "900", color: "#0f172a" },
   fecha: { marginTop: 4, color: "#475569", fontWeight: "500" },
-  sectionTitle: { fontWeight: "800", marginTop: 10, marginBottom: 4, color: "#0f172a", fontSize: 15 },
+  sectionTitle: {
+    fontWeight: "800",
+    marginTop: 10,
+    marginBottom: 4,
+    color: "#0f172a",
+    fontSize: 15,
+  },
   starsRow: { flexDirection: "row", gap: 6, marginVertical: 8 },
   starBtn: { padding: 4 },
   input: {
-    borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#f9fafb",
-    borderRadius: 12, padding: 12, minHeight: 120, textAlignVertical: "top", color: "#0f172a", fontSize: 15,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#f9fafb",
+    borderRadius: 12,
+    padding: 12,
+    minHeight: 120,
+    textAlignVertical: "top",
+    color: "#0f172a",
+    fontSize: 15,
   },
-  footer: { padding: 16, borderTopWidth: 1, borderTopColor: "#e5e7eb", backgroundColor: "#fff" },
+  footer: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
+    backgroundColor: "#fff",
+  },
   btnPrimary: {
-    backgroundColor: TEAL, height: 46, borderRadius: 10, paddingHorizontal: 16,
-    alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8,
+    backgroundColor: TEAL,
+    height: 46,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
   },
   btnPrimaryText: { color: "#fff", fontWeight: "800" },
 });
