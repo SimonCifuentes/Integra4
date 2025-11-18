@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   FlatList,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -42,6 +43,14 @@ type RatingResumen = {
   id_cancha: number;
   promedio: number;
   total_resenas: number;
+};
+
+// 👇 tipo de foto de cancha según tu swagger
+type FotoCancha = {
+  id_foto: number;
+  id_cancha: number;
+  url_foto: string;
+  orden: number;
 };
 
 function toYMD(d = new Date()) {
@@ -133,7 +142,55 @@ export default function CanchasScreen() {
 
   const items: CanchaBE[] = (data?.items ?? []) as CanchaBE[];
 
-  // ---------- NUEVO: ratings promedio por cancha ----------
+  // ---------- NUEVO: mapa de fotos por cancha ----------
+  const [fotosMap, setFotosMap] = useState<Record<number, string | null>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function cargarFotos() {
+      if (!items || items.length === 0) {
+        setFotosMap({});
+        return;
+      }
+
+      const nuevoMapa: Record<number, string | null> = {};
+
+      await Promise.all(
+        items.map(async (c) => {
+          try {
+            const { data } = await http.get(
+              `/canchas/${c.id_cancha}/fotos`
+            );
+            const arr: FotoCancha[] = Array.isArray(data)
+              ? data
+              : data?.data ?? data?.items ?? [];
+
+            const fotoPrincipal =
+              arr.find((f) => f.orden === 1) ?? arr[0] ?? null;
+
+            nuevoMapa[c.id_cancha] = fotoPrincipal?.url_foto ?? null;
+          } catch (e) {
+            // si falla, simplemente no mostramos foto
+            nuevoMapa[c.id_cancha] = null;
+          }
+        })
+      );
+
+      if (!cancelled) {
+        setFotosMap(nuevoMapa);
+      }
+    }
+
+    cargarFotos();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+  // -----------------------------------------------------
+
+  // ---------- ratings promedio por cancha ----------
   const { data: ratingsData } = useQuery({
     queryKey: ["ratings_promedio_canchas"],
     queryFn: async () => {
@@ -338,7 +395,9 @@ export default function CanchasScreen() {
             onPress={() => refetch()}
             style={[styles.btnOutline, { marginTop: 8 }]}
           >
-            <Text style={{ color: TEAL, fontWeight: "700" }}>Reintentar</Text>
+            <Text style={{ color: TEAL, fontWeight: "700" }}>
+              Reintentar
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -358,10 +417,25 @@ export default function CanchasScreen() {
     const deporteUI = inferDeporte(item) || "—";
     const isOpen = openSlotsId === item.id_cancha;
 
-    const rating = ratingsByCancha.get(item.id_cancha); // ⭐ nuevo
+    const rating = ratingsByCancha.get(item.id_cancha); // rating
+    const fotoUrl = fotosMap[item.id_cancha] ?? null; // url de la foto
 
     return (
       <View style={styles.card}>
+        {/* Imagen de la cancha */}
+        {fotoUrl ? (
+          <Image
+            source={{ uri: fotoUrl }}
+            style={styles.cardImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.cardImagePlaceholder}>
+            <Ionicons name="image-outline" size={22} color="#9ca3af" />
+            <Text style={styles.cardImagePlaceholderText}>Sin foto</Text>
+          </View>
+        )}
+
         <View style={styles.cardHeader}>
           <Ionicons name="football-outline" size={20} color={TEAL} />
           <Text style={styles.cardTitle}>
@@ -681,6 +755,31 @@ const styles = StyleSheet.create({
     borderColor: "#e5e7eb",
     elevation: 1,
   },
+
+  // imagen de la cancha
+  cardImage: {
+    width: "100%",
+    height: 140,
+    borderRadius: 10,
+    marginBottom: 10,
+    backgroundColor: "#e5e7eb",
+  },
+  cardImagePlaceholder: {
+    width: "100%",
+    height: 140,
+    borderRadius: 10,
+    marginBottom: 10,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
+  cardImagePlaceholderText: {
+    color: "#9ca3af",
+    fontWeight: "600",
+  },
+
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -691,7 +790,7 @@ const styles = StyleSheet.create({
   cardBody: { marginBottom: 10 },
   text: { color: "#374151", marginBottom: 4 },
 
-  // ⭐ rating
+  // rating
   ratingRow: {
     flexDirection: "row",
     alignItems: "center",

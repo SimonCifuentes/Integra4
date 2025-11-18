@@ -1,21 +1,32 @@
 // app/(tabs)/complejos.tsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
-  ActivityIndicator, RefreshControl,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  ActivityIndicator,
+  RefreshControl,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useComplejos } from "@/src/features/features/complejos/hooks";
 import { useCanchas } from "@/src/features/features/canchas/hooks";
 
-// ⭐ IMPORTAMOS
+// ⭐ ratings
 import { hooks as resenasHooks } from "@/src/features/resenas/hooks";
 import {
   calcularRatingPorComplejo,
   type CanchaWithComplejo,
-  type RatingComplejo,
 } from "@/src/features/resenas/utils";
+
+// ⭐ URL base API (igual que en perfil)
+const API_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  "http://api-h1d7oi-a881cc-168-232-167-73.traefik.me/api/v1";
 
 type ComplejoBE = {
   id?: number | string;
@@ -31,6 +42,75 @@ type ComplejoBE = {
   num_canchas?: number;
   courts_count?: number;
 };
+
+/** 🔹 Obtiene la primera imagen (principal) de un complejo */
+async function fetchFotoComplejo(id: number | string) {
+  const res = await fetch(
+    `${API_URL}/media?target=complejo&target_id=${id}`
+  );
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  const items: any[] = Array.isArray(data?.items)
+    ? data.items
+    : Array.isArray(data)
+    ? data
+    : [];
+
+  if (!items.length) return null;
+
+  const principal =
+    items.find((m) => m.es_principal) ?? items[0];
+
+  return (principal?.url_publica as string | undefined) ?? null;
+}
+
+/** 🔹 Hook: map id_complejo -> url_publica */
+function useFotosComplejos(source: { id: number | string }[]) {
+  const [map, setMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      if (!source.length) {
+        setMap({});
+        return;
+      }
+
+      try {
+        const entries = await Promise.all(
+          source.map(async (c) => {
+            try {
+              const url = await fetchFotoComplejo(c.id);
+              return [String(c.id), url] as const;
+            } catch {
+              return [String(c.id), null] as const;
+            }
+          })
+        );
+
+        if (!cancelled) {
+          const obj: Record<string, string> = {};
+          for (const [id, url] of entries) {
+            if (url) obj[id] = url;
+          }
+          setMap(obj);
+        }
+      } catch {
+        if (!cancelled) setMap({});
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [JSON.stringify(source.map((s) => s.id))]);
+
+  return map;
+}
 
 export default function ComplejosScreen() {
   const { data, isLoading, isError, refetch, isRefetching } =
@@ -91,6 +171,9 @@ export default function ComplejosScreen() {
 
     return calcularRatingPorComplejo(canchasMin, ratingsCanchas);
   }, [ratingsCanchas, canchasMin]);
+
+  // ⭐ PASO 3: fotos de complejos (media API)
+  const fotosPorComplejo = useFotosComplejos(items);
 
   // Filtros de búsqueda
   const complejos = useMemo(() => {
@@ -207,9 +290,10 @@ export default function ComplejosScreen() {
         <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 6 }}>
           {complejos.map((c) => {
             // ⭐ Obtener rating calculado del complejo
-            const r =
-              ratingsPorComplejo.get(Number(c.id)) ??
-              ratingsPorComplejo.get(Number(c.id_complejo || c.id));
+            const r = ratingsPorComplejo.get(Number(c.id));
+
+            // ⭐ Foto del complejo (si tiene media)
+            const fotoUrl = fotosPorComplejo[String(c.id)];
 
             return (
               <View key={String(c.id)} style={styles.card}>
@@ -220,13 +304,20 @@ export default function ComplejosScreen() {
                     gap: 10,
                   }}
                 >
-                  <View style={styles.roundIcon}>
-                    <Ionicons
-                      name="home-outline"
-                      size={16}
-                      color="#0ea5a4"
+                  {fotoUrl ? (
+                    <Image
+                      source={{ uri: fotoUrl }}
+                      style={styles.cardImage}
                     />
-                  </View>
+                  ) : (
+                    <View style={styles.roundIcon}>
+                      <Ionicons
+                        name="home-outline"
+                        size={16}
+                        color="#0ea5a4"
+                      />
+                    </View>
+                  )}
 
                   <View style={{ flex: 1 }}>
                     <Text style={styles.cardTitle}>{c.nombre}</Text>
@@ -284,10 +375,7 @@ function Segment({ label, active, onPress }) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      style={[
-        styles.segment,
-        active && styles.segmentActive,
-      ]}
+      style={[styles.segment, active && styles.segmentActive]}
     >
       <Text
         style={[
@@ -400,12 +488,19 @@ const styles = StyleSheet.create({
   },
 
   roundIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: "#ecfeff",
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  cardImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#e5e7eb",
   },
 
   cardTitle: {
@@ -428,5 +523,23 @@ const styles = StyleSheet.create({
     backgroundColor: "#0ea5a4",
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  segment: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#14b8a6",
+  },
+  segmentActive: {
+    backgroundColor: "#ecfeff",
+  },
+  segmentText: {
+    color: "white",
+    fontWeight: "700",
+  },
+  segmentTextActive: {
+    color: "#0f766e",
   },
 });

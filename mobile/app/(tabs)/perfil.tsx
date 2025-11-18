@@ -13,16 +13,16 @@ import {
   Animated,
   Easing,
   Platform,
-  Image, // 👈 NUEVO
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as SecureStore from "expo-secure-store";
-import * as ImagePicker from "expo-image-picker"; // 👈 NUEVO
+import * as ImagePicker from "expo-image-picker";
 import { useAuth, type Usuario } from "@/src/stores/auth";
 import { AuthAPI } from "@/src/features/features/auth/api";
-import { hooks as uploadHooks } from "@/src/features/uploads/hooks"; // 👈 NUEVO
+import { hooks as uploadHooks } from "@/src/features/uploads/hooks";
 
 /* ========= Config API ========= */
 const API_URL =
@@ -33,9 +33,9 @@ const API_URL =
 type ReservaUI = {
   id: string;
   status: string;
-  date?: string; // YYYY-MM-DD
-  startTime?: string; // HH:mm
-  endTime?: string; // HH:mm
+  date?: string;
+  startTime?: string;
+  endTime?: string;
   cancha?: { id: string; name?: string | number };
   venue?: { id: string; name: string; address?: string };
   notas?: string | null;
@@ -59,7 +59,6 @@ async function getToken() {
   }
 }
 
-// 🔹 nuevo helper: limpiar token del storage
 async function clearToken() {
   try {
     if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -70,7 +69,7 @@ async function clearToken() {
       await SecureStore.deleteItemAsync("accessToken");
     }
   } catch {
-    // ignorar errores silenciosamente
+    // ignorar
   }
 }
 
@@ -87,7 +86,7 @@ async function apiGet<T>(path: string): Promise<T> {
   return txt ? JSON.parse(txt) : ({} as T);
 }
 
-/* ========= Reservas: fetch + normalización ========= */
+/* ========= Reservas ========= */
 async function fetchMisReservas(): Promise<ReservaUI[]> {
   const raw = await apiGet<any>("/reservas/mias");
   const list: any[] = Array.isArray(raw) ? raw : raw?.data ?? raw?.items ?? [];
@@ -129,7 +128,7 @@ async function fetchMisReservas(): Promise<ReservaUI[]> {
   });
 }
 
-/* ========= Helpers de JWT / Rol ========= */
+/* ========= JWT / Rol helpers ========= */
 function b64UrlDecode(str: string): string | null {
   try {
     const pad = "=".repeat((4 - (str.length % 4)) % 4);
@@ -163,8 +162,6 @@ function normalizeStr(s?: string) {
     .toLowerCase()
     .trim();
 }
-
-/** Mapea un string a: superadmin | admin_general | admin_grupos | owner | usuario */
 function normalizeRoleName(input?: string): string | null {
   const r = normalizeStr(input);
   if (!r) return null;
@@ -182,7 +179,6 @@ function normalizeRoleName(input?: string): string | null {
   if (["user", "usuario", "basic"].includes(r)) return "usuario";
   return null;
 }
-
 function deriveRoleFromMe(me: any): string | null {
   const direct =
     normalizeRoleName(me?.rol) ||
@@ -251,7 +247,7 @@ async function computeEffectiveRole(me: any): Promise<string> {
   return "usuario";
 }
 
-/* ========= Helpers de Rol (UI) ========= */
+/* ========= Rol UI ========= */
 function getRoleLabel(rol?: string) {
   const r = (rol || "").toLowerCase();
   if (r === "superadmin") return "Superadmin";
@@ -289,14 +285,16 @@ function RoleBadge({ rol }: { rol?: string }) {
   );
 }
 
-/* ========= Componente ========= */
+/* ========= Componente principal ========= */
 export default function PerfilScreen() {
   const { user, setUser, logout } = useAuth();
 
-  /* --- Me --- */
   const [loadingMe, setLoadingMe] = useState(true);
   const [errorMe, setErrorMe] = useState<string | null>(null);
-  const [noSession, setNoSession] = useState(false); // 🔹 indica que NO hay sesión válida
+  const [noSession, setNoSession] = useState(false);
+
+  // 🔥 avatar que viene desde la API /media
+  const [avatarFromMedia, setAvatarFromMedia] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -305,7 +303,6 @@ export default function PerfilScreen() {
         setErrorMe(null);
         setNoSession(false);
 
-        // 🔹 primero: ver si existe token
         const token = await getToken();
         if (!token) {
           setNoSession(true);
@@ -313,13 +310,10 @@ export default function PerfilScreen() {
         }
 
         const me = await AuthAPI.me();
-
         const effectiveRol = await computeEffectiveRole(me);
         const withRol = { ...me, rol: effectiveRol };
-
         await setUser(withRol);
       } catch (e: any) {
-        // 🔹 detectar error de token inválido / sin autorización
         const status = e?.response?.status;
         const detail = e?.response?.data?.detail || e?.message || "";
         const isInvalidToken =
@@ -364,7 +358,40 @@ export default function PerfilScreen() {
   const onChange = (k: keyof FormUsuario, v: string | null) =>
     setForm((prev) => ({ ...prev, [k]: v as any }));
 
-  /* --- Avatar: subir foto perfil --- */
+  /* --- Cargar avatar desde /media --- */
+  useEffect(() => {
+    if (!user?.id_usuario) return;
+
+    (async () => {
+      try {
+        // la respuesta de GET /media es { items: [...] }
+        const data = await apiGet<{ items: any[] }>(
+          `/media?target=perfil&target_id=${user.id_usuario}`
+        );
+
+        const list = Array.isArray(data?.items) ? data.items : [];
+
+        if (!list.length) return;
+
+        const principal =
+          list.find((m) => m.es_principal) ?? list[0];
+
+        const url = principal?.url_publica as string | undefined;
+
+        if (url) {
+          setAvatarFromMedia(url);
+          setForm((prev) => ({ ...prev, avatar_url: url }));
+        }
+      } catch (err: any) {
+        console.log(
+          "Error cargando avatar desde /media:",
+          err?.message ?? err
+        );
+      }
+    })();
+  }, [user?.id_usuario]);
+
+  /* --- Subir nueva foto de perfil --- */
   const { mutate: uploadMedia, isPending: uploadingAvatar } =
     uploadHooks.useUploadMedia();
 
@@ -397,12 +424,21 @@ export default function PerfilScreen() {
         },
         {
           onSuccess: async (media: any) => {
-            const avatarUrl = media.url_publica;
+            // respuesta del POST /media es un objeto de media
+            const avatarUrl = media?.url_publica as string | undefined;
 
-            // actualizamos el form
+            if (!avatarUrl) {
+              Alert.alert(
+                "Perfil",
+                "La imagen se subió, pero la API no devolvió url_publica."
+              );
+              return;
+            }
+
+            // actualizar altiro lo que se ve
+            setAvatarFromMedia(avatarUrl);
             setForm((prev) => ({ ...prev, avatar_url: avatarUrl }));
 
-            // persistimos en backend y store
             try {
               const payload = { avatar_url: avatarUrl };
               const updated = await AuthAPI.updateMe(payload);
@@ -432,7 +468,7 @@ export default function PerfilScreen() {
     }
   };
 
-  /* --- Confirmación guardar --- */
+  /* --- Confirmar y guardar datos --- */
   const [confirmOpen, setConfirmOpen] = useState(false);
   const cambios = useMemo(() => {
     if (!user) return [];
@@ -457,7 +493,6 @@ export default function PerfilScreen() {
     setConfirmOpen(true);
   };
 
-  /* --- Guardar perfil --- */
   const successAnim = useRef(new Animated.Value(0)).current;
   const showSuccess = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -526,14 +561,13 @@ export default function PerfilScreen() {
     }
   };
 
-  /* --- Mis reservas (reales) --- */
+  /* --- Reservas reales --- */
   const [resLoading, setResLoading] = useState(true);
   const [resError, setResError] = useState<string | null>(null);
   const [reservas, setReservas] = useState<ReservaUI[]>([]);
 
   useEffect(() => {
     (async () => {
-      // 🔹 si no hay sesión, no intentamos cargar reservas
       if (noSession) {
         setReservas([]);
         setResError(null);
@@ -566,7 +600,6 @@ export default function PerfilScreen() {
     );
   }
 
-  // 🔹 Vista cuando NO hay sesión (sin token o token inválido)
   if (noSession) {
     return (
       <View style={{ flex: 1, backgroundColor: "#fff" }}>
@@ -642,6 +675,12 @@ export default function PerfilScreen() {
     );
   }
 
+  const avatarUrlToShow =
+    avatarFromMedia ||
+    (form.avatar_url as string | null) ||
+    (user?.avatar_url as string | null) ||
+    null;
+
   return (
     <View style={{ flex: 1, backgroundColor: "#fff" }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 64 }}>
@@ -662,9 +701,9 @@ export default function PerfilScreen() {
           <View style={styles.avatarContainer}>
             <Image
               source={
-                form.avatar_url || user?.avatar_url
-                  ? { uri: (form.avatar_url || user?.avatar_url)! }
-                  : require("@/assets/images/avatar-placeholder.png") // 👈 CAMBIA POR TU IMAGEN POR DEFECTO
+                avatarUrlToShow
+                  ? { uri: avatarUrlToShow }
+                  : require("@/assets/images/avatar-placeholder.png")
               }
               style={styles.avatar}
             />
@@ -744,7 +783,7 @@ export default function PerfilScreen() {
           </TouchableOpacity>
         </Section>
 
-        {/* Mis reservas (reales) */}
+        {/* Mis reservas */}
         <Section title="Mis reservas">
           {resLoading ? (
             <ActivityIndicator />
@@ -769,7 +808,7 @@ export default function PerfilScreen() {
           )}
         </Section>
 
-        {/* Reseñas (mis reseñas) */}
+        {/* Reseñas */}
         <Section title="Reseñas">
           <TouchableOpacity
             onPress={() => router.push("/(perfil)/mis-resenas")}
@@ -796,7 +835,7 @@ export default function PerfilScreen() {
               try {
                 // await AuthAPI.logout();
               } catch {}
-              await clearToken(); // 🔹 limpiamos token también al cerrar sesión
+              await clearToken();
               await logout();
               router.replace("/(auth)/login");
             }}
@@ -809,7 +848,7 @@ export default function PerfilScreen() {
         </Section>
       </ScrollView>
 
-      {/* TOAST éxito */}
+      {/* Toast éxito */}
       <Animated.View pointerEvents="none" style={[styles.toast, toastStyle]}>
         <Ionicons name="checkmark-circle" size={22} color="#065f46" />
         <Text style={{ color: "#065f46", fontWeight: "800" }}>¡Guardado!</Text>
@@ -1112,7 +1151,6 @@ const styles = StyleSheet.create({
   btnNeutral: { backgroundColor: "#f1f5f9" },
   btnText: { fontWeight: "700" },
 
-  // Toast de éxito
   toast: {
     position: "absolute",
     left: 16,
@@ -1134,7 +1172,6 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
-  // Modal de confirmación
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.32)",
@@ -1162,7 +1199,6 @@ const styles = StyleSheet.create({
   diffFrom: { color: "#6b7280" },
   diffTo: { fontWeight: "700" },
 
-  // Navegación a Mis reseñas
   navRow: {
     height: 48,
     borderRadius: 12,
