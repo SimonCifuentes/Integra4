@@ -28,16 +28,31 @@ class ComplejoUpdateIn(BaseModel):
     latitud: Optional[Lat] = None
     longitud: Optional[Lon] = None
     descripcion: Optional[str] = None
-    activo: Optional[bool] = None  # <-- columna real en tu BD
+    activo: Optional[bool] = None  # columna real en tu BD
 
+# ====== Consulta (UNIFICADA) ======
 class ComplejosQuery(BaseModel):
+    # Búsqueda
     q: Optional[str] = Field(None, description="Texto libre en nombre/dirección/comuna")
     comuna: Optional[str] = None
     id_comuna: Optional[int] = None
     deporte: Optional[str] = Field(None, description="Complejos con al menos 1 cancha de este deporte")
+
+    # Modo 'radio' (nearby por lat/lon)
     lat: Optional[Lat] = None
     lon: Optional[Lon] = None
     max_km: Optional[PositiveKm] = Field(None, description="Radio máximo en km (requiere lat/lon)")
+
+    # Modo 'bounds' de mapa
+    ne_lat: Optional[Lat] = Field(None, description="Latitud esquina Noreste del viewport")
+    ne_lon: Optional[Lon] = Field(None, description="Longitud esquina Noreste del viewport")
+    sw_lat: Optional[Lat] = Field(None, description="Latitud esquina Suroeste del viewport")
+    sw_lon: Optional[Lon] = Field(None, description="Longitud esquina Suroeste del viewport")
+
+    # 🔥 NUEVO: abiertos ahora
+    open_now: Optional[bool] = Field(False, description="Si es true, solo retorna complejos abiertos ahora (America/Santiago)")
+
+    # Orden/paginación
     sort_by: Optional[Literal["distancia", "rating", "nombre", "recientes"]] = "nombre"
     order: Optional[Literal["asc", "desc"]] = "asc"
     page: Page = 1
@@ -54,7 +69,7 @@ class ComplejoOut(BaseModel):
     latitud: Optional[float]
     longitud: Optional[float]
     descripcion: Optional[str]
-    activo: bool  # <-- columna real
+    activo: bool  # columna real
     rating_promedio: Optional[float] = Field(None, description="Promedio 1..5")
     total_resenas: int = 0
     distancia_km: Optional[float] = Field(None, description="Si se envió lat/lon")
@@ -102,63 +117,3 @@ class ResumenOut(BaseModel):
     horas_reservadas: float
     ingresos_confirmados: float
     ocupacion: float = Field(..., description="0..1 aprox. horas reservadas / (horas disponibles * #canchas)")
-
-class ComplejosQuery(BaseModel):
-    q: Optional[str] = Field(None, description="Texto libre en nombre/dirección/comuna")
-    comuna: Optional[str] = None
-    id_comuna: Optional[int] = None
-    deporte: Optional[str] = Field(None, description="Complejos con al menos 1 cancha de este deporte")
-    lat: Optional[Lat] = None
-    lon: Optional[Lon] = None
-    max_km: Optional[PositiveKm] = Field(None, description="Radio máximo en km (requiere lat/lon)")
-    sort_by: Optional[Literal["distancia", "rating", "nombre", "recientes"]] = "nombre"
-    order: Optional[Literal["asc", "desc"]] = "asc"
-    page: Page = 1
-    page_size: PageSize = 20
-
-class ComplejosQuery(BaseModel):
-    q: Optional[str] = Field(
-        None,
-        description="Texto libre en nombre/dirección/comuna"
-    )
-
-    comuna: Optional[str] = None
-    id_comuna: Optional[int] = None
-
-    deporte: Optional[str] = Field(
-        None,
-        description="Complejos con al menos 1 cancha de este deporte"
-    )
-
-    # --- modo 'radio' clásico (nearby actual) ---
-    lat: Optional[Lat] = None
-    lon: Optional[Lon] = None
-    max_km: Optional[PositiveKm] = Field(
-        None,
-        description="Radio máximo en km (requiere lat/lon)"
-    )
-
-    # --- 🔥 NUEVO: modo 'bounds del mapa' ---
-    ne_lat: Optional[Lat] = Field(
-        None,
-        description="Latitud esquina Noreste del viewport"
-    )
-    ne_lon: Optional[Lon] = Field(
-        None,
-        description="Longitud esquina Noreste del viewport"
-    )
-    sw_lat: Optional[Lat] = Field(
-        None,
-        description="Latitud esquina Suroeste del viewport"
-    )
-    sw_lon: Optional[Lon] = Field(
-        None,
-        description="Longitud esquina Suroeste del viewport"
-    )
-
-    # ordenamiento / paginación
-    sort_by: Optional[Literal["distancia", "rating", "nombre", "recientes"]] = "nombre"
-    order: Optional[Literal["asc", "desc"]] = "asc"
-    page: Page = 1
-    page_size: PageSize = 20
-
