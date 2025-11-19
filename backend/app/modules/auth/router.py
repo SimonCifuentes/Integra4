@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.shared.deps import get_db, get_current_user
+from app.shared.deps import get_db, get_current_user, get_current_admin
 from app.modules.auth.schemas import (
     UserCreate, UserLogin, TokenOut, UserPublic, UserUpdate,
     AccessTokenOnly, RefreshIn, LogoutIn, SimpleMsg,
@@ -27,6 +27,7 @@ from app.modules.auth.model import Usuario
 # Mantén el nombre del tag "auth" para que coincida con openapi_tags de main.py
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+
 @router.post(
     "/register",
     response_model=TokenOut,
@@ -38,6 +39,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 def register_endpoint(payload: UserCreate, db: Session = Depends(get_db)):
     return svc_register(db, payload)
 
+
 @router.post(
     "/login",
     response_model=TokenOut,
@@ -48,6 +50,7 @@ def register_endpoint(payload: UserCreate, db: Session = Depends(get_db)):
 def login_endpoint(payload: UserLogin, db: Session = Depends(get_db)):
     return svc_login(db, payload)
 
+
 @router.get(
     "/me",
     response_model=UserPublic,
@@ -57,6 +60,23 @@ def login_endpoint(payload: UserLogin, db: Session = Depends(get_db)):
 )
 def me_endpoint(current: Usuario = Depends(get_current_user)):
     return svc_me(current)
+
+
+# 🔐 NUEVO: solo admin / superadmin
+@router.get(
+    "/me/admin",
+    response_model=UserPublic,
+    summary="Mi perfil (solo admin)",
+    description=(
+        "Devuelve el **perfil** del usuario autenticado solo si su rol es "
+        "`admin` o `superadmin`. Si no, responde 403."
+    ),
+    response_description="Perfil del usuario con rol administrador."
+)
+def me_admin_endpoint(current: Usuario = Depends(get_current_admin)):
+    # Reutiliza la misma lógica de svc_me, pero la dependencia ya filtró por rol
+    return svc_me(current)
+
 
 @router.patch(
     "/me",
@@ -72,6 +92,7 @@ def update_me_endpoint(
 ):
     return svc_update_me(db, current, payload)
 
+
 @router.patch(
     "/me/password",
     response_model=SimpleMsg,
@@ -85,6 +106,7 @@ def change_my_password_endpoint(
     db: Session = Depends(get_db),
 ):
     return svc_change_my_password(db, current, payload)
+
 
 @router.post(
     "/me/push-token",
@@ -100,6 +122,7 @@ def register_push_token_endpoint(
 ):
     return svc_register_push_token(db, current, payload)
 
+
 @router.post(
     "/refresh",
     response_model=AccessTokenOnly,
@@ -109,6 +132,7 @@ def register_push_token_endpoint(
 )
 def refresh_endpoint(payload: RefreshIn, db: Session = Depends(get_db)):
     return svc_refresh_access(db, payload)
+
 
 @router.post(
     "/logout",
@@ -120,6 +144,7 @@ def refresh_endpoint(payload: RefreshIn, db: Session = Depends(get_db)):
 def logout_endpoint(payload: LogoutIn):
     return svc_logout(payload)
 
+
 @router.post(
     "/resend-verification",
     response_model=SimpleMsg,
@@ -129,6 +154,7 @@ def logout_endpoint(payload: LogoutIn):
 )
 def resend_verification_endpoint(payload: ResendVerificationIn, db: Session = Depends(get_db)):
     return svc_resend_verification(db, payload)
+
 
 @router.post(
     "/verify-email",
@@ -140,6 +166,7 @@ def resend_verification_endpoint(payload: ResendVerificationIn, db: Session = De
 def verify_email_endpoint(payload: VerifyEmailIn, db: Session = Depends(get_db)):
     return svc_verify_email(db, payload)
 
+
 @router.post(
     "/forgot-password",
     response_model=SimpleMsg,
@@ -149,6 +176,7 @@ def verify_email_endpoint(payload: VerifyEmailIn, db: Session = Depends(get_db))
 )
 def forgot_password_endpoint(payload: ForgotPasswordIn, db: Session = Depends(get_db)):
     return svc_forgot_password(db, payload)
+
 
 @router.post(
     "/reset-password",
