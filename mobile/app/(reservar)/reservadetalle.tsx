@@ -195,6 +195,13 @@ export default function ReservaDetalleScreen() {
   const [reviewComment, setReviewComment] = useState("");
   const [sendingReview, setSendingReview] = useState(false);
 
+  // --- modal reprogramar ---
+  const [reprogramModalVisible, setReprogramModalVisible] = useState(false);
+  const [newDate, setNewDate] = useState("");
+  const [newStart, setNewStart] = useState("");
+  const [newEnd, setNewEnd] = useState("");
+  const [savingReprogram, setSavingReprogram] = useState(false);
+
   useEffect(() => {
     if (!reserva.inicio && !reserva.fin && params.hora) {
       const [h1, h2] = String(params.hora).split("-").map((s) => s.trim());
@@ -214,7 +221,13 @@ export default function ReservaDetalleScreen() {
         reserva.id_cancha == null ||
         reserva.id_complejo == null);
 
-    if (!needFetch) return;
+    if (!needFetch) {
+      // sincronizar campos de reprogramación con lo que ya tenemos
+      setNewDate(reserva.fecha ?? "");
+      setNewStart(reserva.inicio ?? "");
+      setNewEnd(reserva.fin ?? "");
+      return;
+    }
 
     (async () => {
       try {
@@ -242,7 +255,7 @@ export default function ReservaDetalleScreen() {
         const idComplejo =
           be?.complejo?.id ?? be.id_complejo ?? be.complejo_id ?? undefined;
 
-        setReserva({
+        const next: ReservaState = {
           id: String(id ?? ""),
           fecha,
           inicio,
@@ -254,7 +267,12 @@ export default function ReservaDetalleScreen() {
           notas: be.notas ?? reserva.notas,
           id_cancha: idCancha != null ? Number(idCancha) : undefined,
           id_complejo: idComplejo != null ? Number(idComplejo) : undefined,
-        });
+        };
+
+        setReserva(next);
+        setNewDate(next.fecha ?? "");
+        setNewStart(next.inicio ?? "");
+        setNewEnd(next.fin ?? "");
       } catch (err: any) {
         const msg =
           err?.message && typeof err.message === "string"
@@ -279,7 +297,6 @@ export default function ReservaDetalleScreen() {
     (async () => {
       try {
         setLoadingReview(true);
-        // Ajusta esta ruta si tu backend usa otro path para "mis reseñas"
         const data = await apiGet<any>(
           `/resenas/mias?id_cancha=${reserva.id_cancha}`
         );
@@ -363,6 +380,13 @@ export default function ReservaDetalleScreen() {
     }
   }, [reserva.fecha, reserva.fin]);
 
+  const puedeModificar = useMemo(() => {
+    if (estadoLower === "cancelada") return false;
+    return !reservaPasada;
+  }, [estadoLower, reservaPasada]);
+
+  const puedeCancelar = puedeModificar;
+
   const puedeReseniar = useMemo(() => {
     const confirmed =
       estadoLower === "confirmada" ||
@@ -400,13 +424,11 @@ export default function ReservaDetalleScreen() {
       }
 
       if (existingReview) {
-        // EDITAR reseña existente
         await apiPatch(`/resenas/${existingReview.id_resena}`, body);
         const okMsg = "Tu reseña se actualizó correctamente.";
         if (Platform.OS === "web") window.alert(okMsg);
         else Alert.alert("Listo", okMsg);
       } else {
-        // CREAR reseña nueva
         await apiPost("/resenas", body);
         const okMsg = "¡Gracias! Tu reseña se envió correctamente.";
         if (Platform.OS === "web") window.alert(okMsg);
@@ -415,7 +437,6 @@ export default function ReservaDetalleScreen() {
 
       setReviewModalVisible(false);
 
-      // refrescar reseña desde el backend
       if (reserva.id_cancha) {
         try {
           const data = await apiGet<any>(
@@ -433,11 +454,9 @@ export default function ReservaDetalleScreen() {
     } catch (e: any) {
       const raw = e?.message || "";
       let msg = raw || "No se pudo enviar la reseña. Inténtalo nuevamente.";
-      // detectar violación de clave única
       if (typeof raw === "string" && raw.includes("uq_resena_user_cancha")) {
         msg =
           "Ya tienes una reseña para esta cancha. Vamos a cargarla para que puedas editarla.";
-        // forzar refetch de la reseña existente
         if (reserva.id_cancha) {
           try {
             const data = await apiGet<any>(
@@ -461,6 +480,52 @@ export default function ReservaDetalleScreen() {
       else Alert.alert("Error", msg);
     } finally {
       setSendingReview(false);
+    }
+  };
+
+  const openReprogramModal = () => {
+    setNewDate(reserva.fecha ?? "");
+    setNewStart(reserva.inicio ?? "");
+    setNewEnd(reserva.fin ?? "");
+    setReprogramModalVisible(true);
+  };
+
+  const reprogramar = async () => {
+    if (!reserva.id) return;
+
+    if (!newDate || !newStart || !newEnd) {
+      const msg = "Completa fecha, hora de inicio y fin para reprogramar.";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Faltan datos", msg);
+      return;
+    }
+
+    try {
+      setSavingReprogram(true);
+      await apiPatch(`/reservas/${reserva.id}`, {
+        fecha: newDate,
+        hora_inicio: newStart,
+        hora_fin: newEnd,
+      });
+
+      setReserva((prev) => ({
+        ...prev,
+        fecha: newDate,
+        inicio: newStart,
+        fin: newEnd,
+      }));
+
+      const msg = "Reserva reprogramada correctamente.";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Listo", msg);
+
+      setReprogramModalVisible(false);
+    } catch (e: any) {
+      const em = e?.message ?? "No se pudo reprogramar la reserva.";
+      if (Platform.OS === "web") window.alert(em);
+      else Alert.alert("Error", em);
+    } finally {
+      setSavingReprogram(false);
     }
   };
 
@@ -554,13 +619,23 @@ export default function ReservaDetalleScreen() {
           <Text style={styles.btnPrimaryText}>Agregar al calendario</Text>
         </TouchableOpacity>
 
+        {puedeModificar && (
+          <TouchableOpacity
+            style={styles.btnSecondary}
+            onPress={openReprogramModal}
+          >
+            <Ionicons name="swap-horizontal-outline" color={TEAL} size={16} />
+            <Text style={styles.btnSecondaryText}>Reprogramar reserva</Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={[
             styles.btnOutline,
-            estadoLower === "cancelada" && { opacity: 0.55 },
+            !puedeCancelar && { opacity: 0.55 },
           ]}
           onPress={cancelar}
-          disabled={estadoLower === "cancelada"}
+          disabled={!puedeCancelar}
         >
           <Ionicons name="close-circle-outline" color={TEAL} size={16} />
           <Text style={styles.btnOutlineText}>Cancelar reserva</Text>
@@ -591,6 +666,25 @@ export default function ReservaDetalleScreen() {
         <Text style={[styles.label, { marginBottom: 6 }]}>Notas</Text>
         <Text style={{ color: "#475569" }}>
           {reserva.notas?.trim() ? reserva.notas : "—"}
+        </Text>
+      </View>
+
+      {/* Política de cancelación */}
+      <View style={[styles.card, { marginTop: 12 }]}>
+        <Text style={[styles.label, { marginBottom: 6 }]}>
+          Política de cancelación
+        </Text>
+        <Text style={{ color: "#475569", marginBottom: 4 }}>
+          • Puedes cancelar o reprogramar la reserva desde la app mientras la
+          hora de inicio aún no haya pasado.
+        </Text>
+        <Text style={{ color: "#475569", marginBottom: 4 }}>
+          • Una vez iniciada la reserva, las modificaciones y devoluciones
+          quedan sujetas a las condiciones del complejo.
+        </Text>
+        <Text style={{ color: "#94a3b8", fontSize: 12 }}>
+          Esta política es referencial y puede variar según el complejo o
+          promociones vigentes.
         </Text>
       </View>
 
@@ -625,6 +719,86 @@ export default function ReservaDetalleScreen() {
           </Text>
         </View>
       )}
+
+      {/* Modal reprogramar */}
+      <Modal
+        visible={reprogramModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReprogramModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Reprogramar reserva</Text>
+            <Text style={styles.modalSubtitle}>
+              {reserva.cancha}
+              {reserva.complejo ? ` · ${reserva.complejo}` : ""}
+            </Text>
+
+            <Text style={styles.modalLabel}>Fecha (YYYY-MM-DD)</Text>
+            <TextInput
+              value={newDate}
+              onChangeText={setNewDate}
+              placeholder="Ej: 2025-10-20"
+              style={styles.textareaSmall}
+            />
+
+            <Text style={styles.modalLabel}>Hora inicio (HH:MM)</Text>
+            <TextInput
+              value={newStart}
+              onChangeText={setNewStart}
+              placeholder="Ej: 19:00"
+              style={styles.textareaSmall}
+            />
+
+            <Text style={styles.modalLabel}>Hora término (HH:MM)</Text>
+            <TextInput
+              value={newEnd}
+              onChangeText={setNewEnd}
+              placeholder="Ej: 20:00"
+              style={styles.textareaSmall}
+            />
+
+            <Text
+              style={{
+                color: "#6b7280",
+                fontSize: 12,
+                marginTop: 6,
+              }}
+            >
+              La reprogramación mantiene el mismo complejo y cancha. El horario
+              queda sujeto a disponibilidad real del complejo.
+            </Text>
+
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity
+                style={[styles.btnSmall, styles.btnNeutral]}
+                onPress={() => setReprogramModalVisible(false)}
+                disabled={savingReprogram}
+              >
+                <Text style={styles.btnSmallText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.btnSmall,
+                  styles.btnPrimary,
+                  savingReprogram && { opacity: 0.7 },
+                ]}
+                onPress={reprogramar}
+                disabled={savingReprogram}
+              >
+                {savingReprogram ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={[styles.btnSmallText, { color: "#fff" }]}>
+                    Guardar cambios
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal reseña */}
       <Modal
@@ -737,6 +911,22 @@ const styles = StyleSheet.create({
   },
   btnPrimaryText: { color: "#fff", fontWeight: "800" },
 
+  btnSecondary: {
+    height: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#c4b5fd",
+    backgroundColor: "#eef2ff",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  btnSecondaryText: {
+    color: "#4c1d95",
+    fontWeight: "800",
+  },
+
   btnOutline: {
     height: 46,
     borderRadius: 10,
@@ -812,6 +1002,14 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 8,
     textAlignVertical: "top",
+    backgroundColor: "#f9fafb",
+  },
+  textareaSmall: {
+    height: 42,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 10,
+    paddingHorizontal: 8,
     backgroundColor: "#f9fafb",
   },
   modalButtonsRow: {

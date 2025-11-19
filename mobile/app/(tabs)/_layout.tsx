@@ -67,6 +67,15 @@ export default function TabsLayout() {
             ),
           }}
         />
+        <Tabs.Screen
+  name="grupos"
+  options={{
+    title: "Grupos",
+    tabBarIcon: ({ color, size }) => (
+      <Ionicons name="people-outline" size={size} color={color} />
+    ),
+  }}
+/>
 
         {/* 👇 Nuevo tab. Aparece solo si el usuario es admin/superadmin */}
         <Tabs.Screen

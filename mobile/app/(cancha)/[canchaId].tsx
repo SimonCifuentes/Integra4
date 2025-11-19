@@ -15,50 +15,28 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getItemAsync } from "expo-secure-store";
 
+/* --- Config --- */
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://tu-api.com";
+const TEAL = "#0d9488";
+
+/* --- Tipos --- */
+type SlotBE = {
+  inicio: string; // "08:00"
+  fin: string; // "09:00"
+  precio?: number;
+};
+
 type QuoteResponse = {
   quoteId?: string;
-  totalPrice?: number;
-  currency?: string; // "CLP"
-  breakdown?: Array<{ label: string; amount: number }>;
-  expiresAt?: string; // ISO
+  total?: number;
+  moneda?: string;
 };
 
-type SlotBE = {
-  inicio: string; // ISO
-  fin: string; // ISO
-  etiqueta?: string | null;
-  precio?: number | null;
-};
-
-const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  "http://api-h1d7oi-a881cc-168-232-167-73.traefik.me/api/v1";
-const TEAL = "#0ea5a4";
-
-/* --- Token multiplataforma (web + móvil) --- */
-async function getToken() {
+/* --- Helpers para token --- */
+async function getToken(): Promise<string | null> {
   try {
-    if (Platform.OS === "web") {
-      if (typeof window !== "undefined")
-        return (
-          window.localStorage.getItem("accessToken") ||
-          window.localStorage.getItem("token") ||
-          window.localStorage.getItem("jwt")
-        );
-      return null;
-    }
-    return (
-      (await getItemAsync("accessToken")) ||
-      (await getItemAsync("token")) ||
-      (await getItemAsync("jwt"))
-    );
+    return (await getItemAsync("token")) ?? null;
   } catch {
-    if (typeof window !== "undefined")
-      return (
-        window.localStorage.getItem("accessToken") ||
-        window.localStorage.getItem("token") ||
-        window.localStorage.getItem("jwt")
-      );
     return null;
   }
 }
@@ -70,6 +48,7 @@ async function postCotizar(payload: {
   startTime: string;
   endTime: string;
   note?: string;
+  couponCode?: string;
 }): Promise<QuoteResponse> {
   const token = await getToken();
   const res = await fetch(`${API_URL}/reservas/cotizar`, {
@@ -95,6 +74,7 @@ async function postReservar(payload: {
   endTime: string;
   note?: string;
   quoteId?: string;
+  couponCode?: string;
 }): Promise<{ id: string }> {
   const token = await getToken();
   const res = await fetch(`${API_URL}/reservas`, {
@@ -107,30 +87,26 @@ async function postReservar(payload: {
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
-    throw new Error(
-      `Error ${res.status}: ${txt || "No se pudo confirmar la reserva"}`
-    );
+    throw new Error(`Error ${res.status}: ${txt || "No se pudo reservar"}`);
   }
   const data = await res.json().catch(() => ({}));
   return (data?.data ?? data) as { id: string };
 }
 
-/* --- Disponibilidad (slots predefinidos) --- */
+/**
+ * Obtiene slots disponibles para una cancha en una fecha
+ * GET /canchas/:id/disponibilidad?date=YYYY-MM-DD
+ */
 async function fetchSlots(
   canchaId: string,
   date: string
 ): Promise<SlotBE[]> {
-  if (!canchaId || !date) return [];
   const token = await getToken();
+  const url = `${API_URL}/canchas/${canchaId}/disponibilidad?date=${encodeURIComponent(
+    date
+  )}`;
 
-  const params = new URLSearchParams({
-    id_cancha: canchaId,
-    fecha: date,
-    slot_minutos: "60",
-  });
-
-  const res = await fetch(`${API_URL}/disponibilidad?${params.toString()}`, {
-    method: "GET",
+  const res = await fetch(url, {
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -164,17 +140,18 @@ function CLP({ value, currency = "CLP" }: { value?: number; currency?: string })
 }
 
 function formatSlotLabel(slot: SlotBE) {
-  if (slot.etiqueta) return slot.etiqueta;
-  const ini = slot.inicio?.slice(11, 16) || "";
-  const fin = slot.fin?.slice(11, 16) || "";
-  if (!ini || !fin) return "Horario";
-  return `${ini} - ${fin}`;
+  return `${slot.inicio}–${slot.fin}`;
 }
 
+/**
+ * Convierte "HH:MM" a { inicio, fin } en string
+ * (ya viene así desde el backend, pero lo dejamos por claridad).
+ */
 function slotToHM(slot: SlotBE) {
-  const inicio = slot.inicio?.slice(11, 16) || "";
-  const fin = slot.fin?.slice(11, 16) || "";
-  return { inicio, fin };
+  return {
+    inicio: slot.inicio,
+    fin: slot.fin,
+  };
 }
 
 /* --- Screen --- */
@@ -192,6 +169,7 @@ export default function ReservaFlow() {
   const [selectedSlotIndex, setSelectedSlotIndex] = React.useState<number | null>(null);
 
   const [note, setNote] = React.useState("");
+  const [coupon, setCoupon] = React.useState("");
   const [quoting, setQuoting] = React.useState(false);
   const [quote, setQuote] = React.useState<QuoteResponse | null>(null);
   const [confirming, setConfirming] = React.useState(false);
@@ -215,13 +193,8 @@ export default function ReservaFlow() {
         setSelectedSlotIndex(null);
         return;
       }
-
       setSlotsLoading(true);
       setSlotsError(null);
-      setError(null);
-      setQuote(null);
-      setSelectedSlotIndex(null);
-
       try {
         const list = await fetchSlots(String(canchaId), date);
         if (!cancelled) {
@@ -262,6 +235,7 @@ export default function ReservaFlow() {
         startTime: inicio,
         endTime: fin,
         note: note.trim() || undefined,
+        couponCode: coupon.trim() || undefined,
       });
       setQuote(q);
     } catch (e: any) {
@@ -285,6 +259,7 @@ export default function ReservaFlow() {
         startTime: inicio,
         endTime: fin,
         note: note.trim() || undefined,
+        couponCode: coupon.trim() || undefined,
         ...(quote.quoteId ? { quoteId: quote.quoteId } : {}),
       });
 
@@ -306,13 +281,10 @@ export default function ReservaFlow() {
   };
 
   return (
-    <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+    <View style={{ flex: 1, backgroundColor: "#f9fafb" }}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ padding: 4, marginRight: 8 }}
-        >
+        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 8 }}>
           <Ionicons name="chevron-back" size={22} color="#ffffff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Reservar cancha</Text>
@@ -357,6 +329,7 @@ export default function ReservaFlow() {
               style={{
                 flexDirection: "row",
                 flexWrap: "wrap",
+                justifyContent: "space-between",
                 gap: 8,
                 marginTop: 4,
               }}
@@ -401,6 +374,15 @@ export default function ReservaFlow() {
           )}
         </View>
 
+        {/* Cupón opcional */}
+        <Field
+          icon="pricetag-outline"
+          label="Cupón (opcional)"
+          value={coupon}
+          placeholder="Ej: PLAYTEMUCO10"
+          onChangeText={setCoupon}
+        />
+
         {/* Nota opcional */}
         <Field
           icon="document-text-outline"
@@ -428,72 +410,57 @@ export default function ReservaFlow() {
             </>
           )}
         </TouchableOpacity>
-      </View>
 
-      {/* Resultado de la cotización */}
-      {quote && (
-        <View style={[styles.card, { marginTop: 12 }]}>
-          <Text style={styles.blockTitle}>Resumen de cotización</Text>
-          {quote.breakdown?.map((b, i) => (
-            <View key={i} style={styles.row}>
-              <Text style={styles.rowLabel}>{b.label}</Text>
-              <CLP value={b.amount} currency={quote.currency || "CLP"} />
+        {/* Resultado cotización */}
+        {quote && (
+          <View style={{ marginTop: 16 }}>
+            <Text style={styles.blockTitle}>Resumen</Text>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Fecha</Text>
+              <Text>{date}</Text>
             </View>
-          ))}
-          <View style={styles.sep} />
-          <View style={styles.row}>
-            <Text style={[styles.rowLabel, { fontWeight: "900" }]}>
-              Total
-            </Text>
-            <CLP
-              value={quote.totalPrice}
-              currency={quote.currency || "CLP"}
-            />
-          </View>
-          {quote.expiresAt ? (
-            <Text style={{ color: "#6b7280", marginTop: 6 }}>
-              Cotización válida hasta: {quote.expiresAt}
-            </Text>
-          ) : null}
-
-          {/* Botón Confirmar */}
-          <TouchableOpacity
-            onPress={handleConfirmar}
-            disabled={!canConfirm}
-            style={[
-              styles.btnConfirm,
-              { opacity: canConfirm ? 1 : 0.6, marginTop: 12 },
-            ]}
-          >
-            {confirming ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons
-                  name="checkmark-circle-outline"
-                  size={18}
-                  color="#fff"
-                />
-                <Text style={styles.btnConfirmText}>Confirmar reserva</Text>
-              </>
+            {selectedSlot && (
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>Horario</Text>
+                <Text>{formatSlotLabel(selectedSlot)}</Text>
+              </View>
             )}
-          </TouchableOpacity>
-        </View>
-      )}
+            <View style={styles.sep} />
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Total</Text>
+              <CLP value={quote.total} currency={quote.moneda || "CLP"} />
+            </View>
 
-      {/* Errores generales */}
-      {error ? (
-        <View style={{ paddingHorizontal: 16, marginTop: 8 }}>
-          <Text style={{ color: "#991b1b", textAlign: "center" }}>
-            {error}
-          </Text>
-        </View>
-      ) : null}
-    </ScrollView>
+            {/* Botón Confirmar */}
+            <TouchableOpacity
+              onPress={handleConfirmar}
+              disabled={!canConfirm}
+              style={[
+                styles.btnConfirm,
+                { opacity: canConfirm ? 1 : 0.6, marginTop: 14 },
+              ]}
+            >
+              {confirming ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                  <Text style={styles.btnConfirmText}>Confirmar reserva</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {error && (
+          <Text style={{ color: "#b91c1c", marginTop: 12 }}>{error}</Text>
+        )}
+      </View>
+    </View>
   );
 }
 
-/* --- Subcomponentes --- */
+/* --- Field component --- */
 function Field({
   icon,
   label,
@@ -565,15 +532,18 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 999,
+    width: "30%",
+    alignItems: "center",
+    justifyContent: "center",
   },
   chipSelected: {
-    backgroundColor: "#ecfeff",
+    backgroundColor: "#d1fae5",
     borderWidth: 1,
-    borderColor: "#99f6e4",
+    borderColor: TEAL,
   },
   chipText: {
     fontWeight: "700",
-    color: "#0f172a",
+    color: "#111827",
   },
   chipTextSelected: {
     color: TEAL,
