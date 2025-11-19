@@ -23,6 +23,9 @@ from app.modules.contrato.router import router as contrato
 # NUEVO: router de horarios admin (/api/v1/admin/horarios)
 from app.modules.horarios.router import router as horarios_admin
 
+# NUEVO: router de complejos admin (/api/v1/admin/complejos)
+from app.modules.complejos.admin_router import router as admin_complejos
+
 api_router = APIRouter()
 
 api_router.include_router(auth)
@@ -44,6 +47,9 @@ api_router.include_router(cotizaciones)
 
 # NUEVO: expone /api/v1/admin/horarios
 api_router.include_router(horarios_admin)
+
+# NUEVO: expone /api/v1/admin/complejos
+api_router.include_router(admin_complejos)
 
 api_router.include_router(admin, prefix="/admin")
 api_router.include_router(superadmin, prefix="/superadmin")

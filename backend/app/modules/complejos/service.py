@@ -1,7 +1,8 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, List
 from datetime import date, timedelta
 from fastapi import HTTPException
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.modules.auth.model import Usuario
@@ -36,12 +37,6 @@ def list_complejos(db: Session, q: ComplejosQuery) -> ComplejosListOut:
     - Modo LISTA:
         Si no hay ni bounds ni radio, se devuelven complejos según filtros
         (q, comuna, id_comuna, deporte...) sin restricción espacial.
-
-    Pasos:
-    - Normaliza bounds a {north,south,east,west}
-    - Decide si usamos radio
-    - Llama al repositorio con esa info
-    - Empaqueta la respuesta en ComplejosListOut
     """
 
     # 1. Paginación
@@ -84,7 +79,6 @@ def list_complejos(db: Session, q: ComplejosQuery) -> ComplejosListOut:
     )
 
     # 4. Ir al repositorio
-    #    El repo debe exponer list_complejos(db, params, bounds, use_radius, offset, limit)
     rows, total = repo.list_complejos(
         db=db,
         params=q,
@@ -186,3 +180,56 @@ def resumen(db: Session, id_complejo: int, desde: Optional[str], hasta: Optional
         ingresos_confirmados=float(kpis["ingresos_confirmados"]),
         ocupacion=float(kpis["ocupacion"])
     )
+
+
+def list_complejos_admin(db: Session, current: Usuario) -> List[ComplejoOut]:
+    """
+    Lista los complejos que el usuario puede administrar:
+
+    - dueno      -> solo sus complejos (id_dueno = usuario actual)
+    - admin      -> todos los complejos activos
+    - superadmin -> todos los complejos activos
+
+    Otros roles -> 403.
+    """
+    if current.rol not in ("dueno", "admin", "superadmin"):
+        raise HTTPException(
+            status_code=403,
+            detail="No autorizado para administrar complejos",
+        )
+
+    # Selección de IDs según rol
+    if current.rol in ("admin", "superadmin"):
+        rows = db.execute(
+            text(
+                """
+                SELECT id_complejo
+                FROM complejos
+                WHERE activo = TRUE
+                ORDER BY id_complejo
+                """
+            )
+        ).all()
+    else:  # dueno
+        rows = db.execute(
+            text(
+                """
+                SELECT id_complejo
+                FROM complejos
+                WHERE activo = TRUE
+                  AND id_dueno = :uid
+                ORDER BY id_complejo
+                """
+            ),
+            {"uid": current.id_usuario},
+        ).all()
+
+    ids = [r[0] for r in rows]
+    items: List[ComplejoOut] = []
+
+    for cid in ids:
+        row = repo.get_complejo_by_id(db, cid)
+        if row:
+            items.append(ComplejoOut(**row))
+
+    return items
