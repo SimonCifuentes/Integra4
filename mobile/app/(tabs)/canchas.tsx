@@ -19,6 +19,16 @@ import { http } from "@/src/services/http";
 
 const TEAL = "#0ea5a4";
 
+// Imágenes locales para las canchas (fallback)
+const localCanchaImages = [
+  require("../../assets/images/cancha1.png"),
+  require("../../assets/images/cancha2.png"),
+  require("../../assets/images/cancha3.png"),
+  require("../../assets/images/cancha4.png"),
+  require("../../assets/images/cancha5.png"),
+  require("../../assets/images/cancha6.png"),
+];
+
 type CanchaBE = {
   id_cancha: number;
   nombre: string;
@@ -401,12 +411,20 @@ export default function CanchasScreen() {
     </>
   );
 
-  const renderItem = ({ item }: { item: CanchaBE }) => {
+  const renderItem = ({
+    item,
+    index,
+  }: {
+    item: CanchaBE;
+    index: number;
+  }) => {
     const deporteUI = inferDeporte(item) || "—";
     const isOpen = openSlotsId === item.id_cancha;
 
     const rating = ratingsByCancha.get(item.id_cancha);
     const fotoUrl = fotosMap[item.id_cancha] ?? null;
+    const localImage =
+      localCanchaImages[index % localCanchaImages.length];
 
     return (
       <View style={styles.card}>
@@ -417,10 +435,12 @@ export default function CanchasScreen() {
             resizeMode="cover"
           />
         ) : (
-          <View style={styles.cardImagePlaceholder}>
-            <Ionicons name="image-outline" size={22} color="#9ca3af" />
-            <Text style={styles.cardImagePlaceholderText}>Sin foto</Text>
-          </View>
+          // Fallback a imagen local
+          <Image
+            source={localImage}
+            style={styles.cardImage}
+            resizeMode="cover"
+          />
         )}
 
         <View style={styles.cardHeader}>

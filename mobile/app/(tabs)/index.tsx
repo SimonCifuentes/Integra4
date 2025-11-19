@@ -29,6 +29,22 @@ import {
 const { width } = Dimensions.get("window");
 const TEAL = "#0ea5a4";
 
+// Imágenes locales para canchas y complejos (mock / fallback)
+const localCanchaImages = [
+  require("../../assets/images/cancha1.png"),
+  require("../../assets/images/cancha2.png"),
+  require("../../assets/images/cancha3.png"),
+  require("../../assets/images/cancha4.png"),
+  require("../../assets/images/cancha5.png"),
+  require("../../assets/images/cancha6.png"),
+];
+
+const localComplejoImages = [
+  require("../../assets/images/complejo.png"),
+  require("../../assets/images/complejo2.png"),
+  require("../../assets/images/complejo3.png"),
+];
+
 /* -------------------------------------------------------------------------- */
 /*                                  Tipos                                     */
 /* -------------------------------------------------------------------------- */
@@ -247,7 +263,7 @@ export default function HomeScreen() {
     [complejosData]
   );
 
-  // 🔹 ratings promedio por cancha
+  // ratings promedio por cancha
   const { data: ratingsData } = useQuery<RatingResumen[]>({
     queryKey: ["ratings_promedio_canchas_home"],
     queryFn: async () => {
@@ -289,7 +305,7 @@ export default function HomeScreen() {
         return b._rating_total_resenas - a._rating_total_resenas;
       });
 
-    // si no hay ninguna con reseñas, mostramos las primeras 3 que existan
+    // si no hay ninguna con reseñas, mostramos las primeras 3
     if (enriched.length === 0) {
       return canchasList.slice(0, 3).map((c: any) => ({
         ...c,
@@ -340,7 +356,6 @@ export default function HomeScreen() {
       })
       .filter((c) => c._id_resuelto)
       .sort((a, b) => {
-        // primero los que tienen reseñas
         const aHas = a._rating_total_resenas > 0;
         const bHas = b._rating_total_resenas > 0;
         if (aHas !== bHas) return Number(bHas) - Number(aHas);
@@ -362,8 +377,6 @@ export default function HomeScreen() {
 
     return enriched.slice(0, 3);
   }, [complejosList, ratingsPorComplejo]);
-
-  /* ---------------------------------------------------------------------- */
 
   const loadingAny = loadingCanchas || loadingComplejos;
 
@@ -477,7 +490,7 @@ export default function HomeScreen() {
             <View
               style={{
                 width: 220,
-                height: 120,
+                height: 140,
                 backgroundColor: "#f1f5f9",
                 borderRadius: 12,
                 justifyContent: "center",
@@ -490,38 +503,60 @@ export default function HomeScreen() {
               </Text>
             </View>
           ) : (
-            canchasDestacadas.map((c: any) => (
+            canchasDestacadas.map((c: any, index: number) => (
               <TouchableOpacity
                 key={c.id_cancha}
                 style={{
                   width: 220,
-                  height: 120,
+                  height: 140,
                   backgroundColor: "#f8fafc",
                   borderRadius: 12,
                   marginRight: 12,
-                  justifyContent: "center",
-                  paddingHorizontal: 12,
+                  overflow: "hidden",
                 }}
                 onPress={() =>
                   router.push({
-                    pathname: "/(cancha)/reserva",
+                    pathname: "/(reservar)/reservar",
                     params: {
                       canchaId: String(c.id_cancha),
                     },
                   })
                 }
               >
-                <Text style={{ fontWeight: "700" }}>{c.nombre}</Text>
-                <Text style={{ fontSize: 12, color: "#64748b" }}>
-                  {c.deporte ?? "Deporte"} · {c.superficie ?? "Superficie"}
-                </Text>
-                <Text style={{ marginTop: 4, fontSize: 12 }}>
-                  ⭐{" "}
-                  {c._rating_promedio?.toFixed
-                    ? c._rating_promedio.toFixed(1)
-                    : c._rating_promedio}{" "}
-                  ({c._rating_total_resenas} reseñas)
-                </Text>
+                <RNImage
+                  source={
+                    localCanchaImages[
+                      index % localCanchaImages.length
+                    ] as any
+                  }
+                  style={{ width: "100%", height: 80 }}
+                  resizeMode="cover"
+                />
+                <View
+                  style={{
+                    flex: 1,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={{ fontWeight: "700" }} numberOfLines={1}>
+                    {c.nombre}
+                  </Text>
+                  <Text
+                    style={{ fontSize: 12, color: "#64748b" }}
+                    numberOfLines={1}
+                  >
+                    {c.deporte ?? "Deporte"} · {c.superficie ?? "Superficie"}
+                  </Text>
+                  <Text style={{ marginTop: 4, fontSize: 12 }}>
+                    ⭐{" "}
+                    {c._rating_promedio?.toFixed
+                      ? c._rating_promedio.toFixed(1)
+                      : c._rating_promedio}{" "}
+                    ({c._rating_total_resenas} reseñas)
+                  </Text>
+                </View>
               </TouchableOpacity>
             ))
           )}
@@ -554,7 +589,7 @@ export default function HomeScreen() {
             <View
               style={{
                 width: 220,
-                height: 120,
+                height: 140,
                 backgroundColor: "#f1f5f9",
                 borderRadius: 12,
                 marginRight: 12,
@@ -568,17 +603,16 @@ export default function HomeScreen() {
               </Text>
             </View>
           ) : (
-            mejoresComplejos.map((c: any) => (
+            mejoresComplejos.map((c: any, index: number) => (
               <TouchableOpacity
                 key={c._id_resuelto}
                 style={{
-                  width: 180,
-                  height: 120,
+                  width: 200,
+                  height: 140,
                   backgroundColor: "#f8fafc",
                   borderRadius: 12,
                   marginRight: 12,
-                  justifyContent: "center",
-                  paddingHorizontal: 12,
+                  overflow: "hidden",
                 }}
                 onPress={() =>
                   router.push({
@@ -590,19 +624,43 @@ export default function HomeScreen() {
                   })
                 }
               >
-                <Text style={{ fontWeight: "700" }}>{c.nombre}</Text>
-                {c.direccion && (
-                  <Text style={{ fontSize: 12, color: "#64748b" }}>
-                    {c.direccion}
+                <RNImage
+                  source={
+                    localComplejoImages[
+                      index % localComplejoImages.length
+                    ] as any
+                  }
+                  style={{ width: "100%", height: 80 }}
+                  resizeMode="cover"
+                />
+
+                <View
+                  style={{
+                    flex: 1,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={{ fontWeight: "700" }} numberOfLines={1}>
+                    {c.nombre}
                   </Text>
-                )}
-                <Text style={{ marginTop: 4, fontSize: 12 }}>
-                  ⭐{" "}
-                  {c._rating_promedio?.toFixed
-                    ? c._rating_promedio.toFixed(1)
-                    : c._rating_promedio}{" "}
-                  ({c._rating_total_resenas} reseñas)
-                </Text>
+                  {c.direccion && (
+                    <Text
+                      style={{ fontSize: 12, color: "#64748b" }}
+                      numberOfLines={1}
+                    >
+                      {c.direccion}
+                    </Text>
+                  )}
+                  <Text style={{ marginTop: 4, fontSize: 12 }}>
+                    ⭐{" "}
+                    {c._rating_promedio?.toFixed
+                      ? c._rating_promedio.toFixed(1)
+                      : c._rating_promedio}{" "}
+                    ({c._rating_total_resenas} reseñas)
+                  </Text>
+                </View>
               </TouchableOpacity>
             ))
           )}

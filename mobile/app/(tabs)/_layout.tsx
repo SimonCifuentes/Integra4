@@ -21,8 +21,7 @@ export default function TabsLayout() {
         const token = await registerForNotifications();
         if (token) {
           console.log("Expo push token:", token);
-          // TODO: si quieres, aquí luego lo envías a tu backend:
-          // await api.post("/users/push-token", { token });
+          // aquí podrías enviar el token a tu backend
         } else {
           console.log("No se obtuvo token de notificaciones");
         }
@@ -33,15 +32,14 @@ export default function TabsLayout() {
   }, []);
 
   return (
-    // 👇 Esto hace que todo el contenido de los tabs respete
-    // el notch / Dynamic Island (solo arriba)
+    // Hace que todo el contenido respete el notch / Dynamic Island (solo arriba)
     <SafeAreaView
       style={{ flex: 1, backgroundColor: "#ffffff" }}
       edges={["top"]}
     >
       <Tabs screenOptions={{ headerShown: false }}>
         <Tabs.Screen
-          name="index" // tu home real
+          name="index" // Home
           options={{
             title: "Inicio",
             tabBarIcon: ({ color, size }) => (
@@ -49,8 +47,9 @@ export default function TabsLayout() {
             ),
           }}
         />
+
         <Tabs.Screen
-          name="canchas" // ajusta si tu ruta se llama distinto
+          name="canchas"
           options={{
             title: "Canchas",
             tabBarIcon: ({ color, size }) => (
@@ -58,6 +57,7 @@ export default function TabsLayout() {
             ),
           }}
         />
+
         <Tabs.Screen
           name="perfil"
           options={{
@@ -67,19 +67,42 @@ export default function TabsLayout() {
             ),
           }}
         />
-        <Tabs.Screen
-  name="grupos"
-  options={{
-    title: "Grupos",
-    tabBarIcon: ({ color, size }) => (
-      <Ionicons name="people-outline" size={size} color={color} />
-    ),
-  }}
-/>
 
-        {/* 👇 Nuevo tab. Aparece solo si el usuario es admin/superadmin */}
         <Tabs.Screen
-          name="admin" // <-- el bridge: app/(tabs)/admin.tsx
+          name="grupos"
+          options={{
+            title: "Grupos",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="people-outline" size={size} color={color} />
+            ),
+          }}
+        />
+
+        {/* NUEVO: tab de Reservas con icono de calendario */}
+        <Tabs.Screen
+          name="reservas"
+          options={{
+            title: "Reservas",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="calendar-outline" color={color} size={size} />
+            ),
+          }}
+        />
+
+        {/* NUEVO: tab de Complejos con icono tipo edificio */}
+        <Tabs.Screen
+          name="complejos"
+          options={{
+            title: "Complejos",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="business-outline" color={color} size={size} />
+            ),
+          }}
+        />
+
+        {/* Tab Admin: solo visible si el usuario es admin/superadmin */}
+        <Tabs.Screen
+          name="admin"
           options={{
             title: "Admin",
             href: showAdmin ? "/(tabs)/admin" : null, // oculto si no es admin
