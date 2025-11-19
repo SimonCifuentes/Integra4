@@ -17,10 +17,11 @@ from app.modules.denuncias.router import router as denuncias
 from app.modules.admin.router import router as admin
 from app.modules.superadmin.router import router as superadmin
 from app.modules.uploads.router import router as uploads
-
-# 👇 NUEVO
 from app.modules.cotizaciones.router import router as cotizaciones
-from app.modules.contrato.router import router as contrato  # ⬅️ NUEVO
+from app.modules.contrato.router import router as contrato
+
+# NUEVO: router de horarios admin (/api/v1/admin/horarios)
+from app.modules.horarios.router import router as horarios_admin
 
 api_router = APIRouter()
 
@@ -38,17 +39,20 @@ api_router.include_router(grupos)
 api_router.include_router(favoritos)
 api_router.include_router(denuncias)
 api_router.include_router(uploads)
-api_router.include_router(contrato)  # ⬅️ NUEVO
-
-# 👇 NUEVO
+api_router.include_router(contrato)
 api_router.include_router(cotizaciones)
+
+# NUEVO: expone /api/v1/admin/horarios
+api_router.include_router(horarios_admin)
 
 api_router.include_router(admin, prefix="/admin")
 api_router.include_router(superadmin, prefix="/superadmin")
 
+
 @api_router.get("/healthz", tags=["_meta"])
 def healthz():
     return {"status": "ok"}
+
 
 @api_router.get("/version", tags=["_meta"])
 def version():
