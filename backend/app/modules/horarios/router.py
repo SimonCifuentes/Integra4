@@ -1,20 +1,32 @@
+# app/modules/horarios/router.py
+from __future__ import annotations
+
+from typing import List, Dict
+
 from fastapi import APIRouter, Depends, status, Body, Path
 from sqlalchemy.orm import Session
+
 from app.shared.deps import get_db, require_roles
 from app.modules.auth.model import Usuario
-from .schemas import HorarioCreate, HorarioPatch
-from .service import crear, actualizar_parcial, eliminar
+
+from .schemas import HorarioCreate, HorarioPatch, HorarioOut
+from .service import crear, actualizar_parcial, eliminar, listar_por_cancha
 
 router = APIRouter(prefix="/horarios", tags=["horarios"])
 
+
+# -----------------------------
+#  POST - Crear horario
+# -----------------------------
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
-    response_model=dict,
+    response_model=Dict[str, int],
     summary="Crear horario recurrente",
     description=(
         "Crea un **horario de atención** por día de semana. "
-        "Puede ser a nivel **cancha** (id_cancha != null) o **general del complejo** (id_cancha = null). "
+        "Puede ser a nivel **cancha** (`id_cancha` != null) "
+        "o **general del complejo** (`id_cancha` = null). "
         "El horario de **cancha** tiene prioridad sobre el del **complejo**."
     ),
     responses={
@@ -25,8 +37,8 @@ router = APIRouter(prefix="/horarios", tags=["horarios"])
                 }
             }
         },
-        422: {"description": "Validación: hora_apertura < hora_cierre."}
-    }
+        422: {"description": "Validación: hora_apertura < hora_cierre."},
+    },
 )
 def crear_horario(
     body: HorarioCreate = Body(
@@ -36,34 +48,38 @@ def crear_horario(
                 "summary": "Horario para una cancha",
                 "value": {
                     "id_complejo": 1,
-                    "id_cancha": 1,
+                    "id_cancha": 4,
                     "dia": "domingo",
                     "hora_apertura": "09:00:00",
-                    "hora_cierre": "22:00:00"
-                }
+                    "hora_cierre": "22:00:00",
+                },
             },
             "general_de_complejo": {
-                "summary": "Horario general del complejo",
+                "summary": "Horario general del complejo (sin cancha específica)",
                 "value": {
                     "id_complejo": 1,
-                    "id_cancha": 1,
+                    "id_cancha": None,
                     "dia": "lunes",
                     "hora_apertura": "08:00:00",
-                    "hora_cierre": "23:00:00"
-                }
-            }
-        }
+                    "hora_cierre": "23:00:00",
+                },
+            },
+        },
     ),
-    user: Usuario = Depends(require_roles("dueno","admin","superadmin")),
-    db: Session = Depends(get_db)
+    user: Usuario = Depends(require_roles("dueno", "admin", "superadmin")),
+    db: Session = Depends(get_db),
 ):
     hid = crear(db, body.dict())
     db.commit()
     return {"id_horario": hid}
 
+
+# -----------------------------
+#  PATCH - Actualizar horario
+# -----------------------------
 @router.patch(
     "/{id_horario}",
-    response_model=dict,
+    response_model=Dict[str, bool],
     summary="Actualizar parcialmente un horario",
     description=(
         "Actualiza campos de un horario existente: `dia`, `hora_apertura`, `hora_cierre`. "
@@ -71,10 +87,10 @@ def crear_horario(
     ),
     responses={
         200: {
-            "content": {"application/json": {"example": {"ok": True}}}
+            "content": {"application/json": {"example": {"ok": True}}},
         },
-        404: {"description": "Horario no encontrado."}
-    }
+        404: {"description": "Horario no encontrado."},
+    },
 )
 def patch_horario(
     id_horario: int = Path(..., ge=1, description="ID del horario."),
@@ -85,33 +101,63 @@ def patch_horario(
                 "summary": "Cambiar apertura y cierre",
                 "value": {
                     "hora_apertura": "10:00:00",
-                    "hora_cierre": "21:30:00"
-                }
+                    "hora_cierre": "21:30:00",
+                },
             },
             "cambiar_dia": {
                 "summary": "Cambiar día",
-                "value": {"dia": "sabado"}
-            }
-        }
+                "value": {"dia": "sabado"},
+            },
+        },
     ),
-    user: Usuario = Depends(require_roles("dueno","admin","superadmin")),
-    db: Session = Depends(get_db)
+    user: Usuario = Depends(require_roles("dueno", "admin", "superadmin")),
+    db: Session = Depends(get_db),
 ):
-    actualizar_parcial(db, id_horario, {k:v for k,v in body.dict().items() if v is not None})
+    # Filtramos solo los campos que vienen seteados
+    campos = {k: v for k, v in body.dict().items() if v is not None}
+    actualizar_parcial(db, id_horario, campos)
     db.commit()
     return {"ok": True}
 
+
+# -----------------------------
+#  DELETE - Eliminar horario
+# -----------------------------
 @router.delete(
     "/{id_horario}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Eliminar horario",
-    description="Elimina un horario por su ID. Retorna 204 si la eliminación fue exitosa."
+    description="Elimina un horario por su ID. Retorna 204 si la eliminación fue exitosa.",
 )
 def delete_horario(
     id_horario: int = Path(..., ge=1, description="ID del horario."),
-    user: Usuario = Depends(require_roles("dueno","admin","superadmin")),
-    db: Session = Depends(get_db)
+    user: Usuario = Depends(require_roles("dueno", "admin", "superadmin")),
+    db: Session = Depends(get_db),
 ):
     eliminar(db, id_horario)
     db.commit()
+    # 204 => sin body
     return
+
+
+# -----------------------------
+#  ✅ GET - Listar horarios por cancha
+# -----------------------------
+@router.get(
+    "/canchas/{id_cancha}",
+    response_model=List[HorarioOut],
+    summary="Obtener horarios de una cancha",
+    description=(
+        "Devuelve todos los horarios de atención asociados a una cancha específica. "
+        "Si la cancha no tiene horarios configurados, retorna una lista vacía `[]`."
+    ),
+)
+def get_horarios_por_cancha(
+    id_cancha: int = Path(..., ge=1, description="ID de la cancha."),
+    db: Session = Depends(get_db),
+):
+    """
+    Endpoint público para que el frontend pueda cargar
+    los horarios de una cancha antes de reservar.
+    """
+    return listar_por_cancha(db, id_cancha)
