@@ -691,17 +691,20 @@ export default function PanelAdminScreen() {
           }}
           renderItem={({ item }) => (
             <CanchaCard
-              x={item}
-              onEdit={() => setEditingCancha(item)}
-              onManageSchedules={() =>
-                router.push({
-                  pathname: "/admin-horarios",
-                  params: {
-                    canchaId: String(item.id_cancha),
-                  },
-                })
-              }
-            />
+  x={item}
+  onEdit={() => setEditingCancha(item)}
+  onManageSchedules={() =>
+    router.push({
+      pathname: "/(admin)/admin-horarios",
+      params: {
+        canchaId: String(item.id_cancha),
+        complejoId: String(item.id_complejo),  // 👈 nuevo
+        canchaNombre: item.nombre,             // opcional, solo para mostrar
+      },
+    })
+  }
+/>
+
           )}
           ListEmptyComponent={
             !loading ? (
