@@ -105,36 +105,33 @@ export default function GruposScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Filtros */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filtersContainer}
-      >
+      {/* Filtros en una sola fila, sin scroll y mismo tamaño */}
+      <View style={styles.filtersRow}>
         <FilterChip
           label="Todos"
+          icon="grid-outline"
           active={activeFilter === "todos"}
           onPress={() => setActiveFilter("todos")}
         />
         <FilterChip
           label="Mis grupos"
+          icon="person-circle-outline"
           active={activeFilter === "mis"}
           onPress={() => setActiveFilter("mis")}
-          icon="person-circle-outline"
         />
         <FilterChip
           label="Invitaciones"
+          icon="mail-unread-outline"
           active={activeFilter === "invitaciones"}
           onPress={() => setActiveFilter("invitaciones")}
-          icon="mail-unread-outline"
         />
         <FilterChip
           label="Favoritos"
+          icon="star-outline"
           active={activeFilter === "favoritos"}
           onPress={() => setActiveFilter("favoritos")}
-          icon="star-outline"
         />
-      </ScrollView>
+      </View>
 
       {/* Lista de grupos */}
       <ScrollView
@@ -256,29 +253,28 @@ function GroupCard({ group }: { group: Group }) {
 
 function FilterChip({
   label,
+  icon,
   active,
   onPress,
-  icon,
 }: {
   label: string;
+  icon: keyof typeof Ionicons.glyphMap;
   active: boolean;
   onPress: () => void;
-  icon?: keyof typeof Ionicons.glyphMap;
 }) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      style={[styles.chip, active && styles.chipActive]}
+      style={[styles.filterChip, active && styles.filterChipActive]}
+      activeOpacity={0.7}
     >
-      {icon && (
-        <Ionicons
-          name={icon}
-          size={14}
-          color={active ? "#fff" : "#4b5563"}
-          style={{ marginRight: 4 }}
-        />
-      )}
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>
+      <Ionicons
+        name={icon}
+        size={20}
+        color={active ? TEAL : "#4b5563"}
+        style={{ marginBottom: 4 }}
+      />
+      <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -332,32 +328,37 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  filtersContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  chip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
+  /* fila de filtros */
+  filtersRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#f9fafb",
+    gap: 8,
   },
-  chipActive: {
-    backgroundColor: TEAL,
+  filterChip: {
+    flex: 1,
+    height: 80,
+    borderRadius: 999,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterChipActive: {
+    backgroundColor: "#e0fdfa",
     borderColor: TEAL,
   },
-  chipText: {
+  filterChipText: {
     fontSize: 12,
     fontWeight: "700",
     color: "#4b5563",
   },
-  chipTextActive: {
-    color: "#fff",
+  filterChipTextActive: {
+    color: TEAL,
   },
 
   card: {

@@ -450,25 +450,7 @@ export default function CanchasPorComplejoScreen() {
             </View>
 
             <View style={{ flexDirection: "row", gap: 10 }}>
-              <TouchableOpacity
-                style={styles.btnGhost}
-                onPress={() =>
-                  router.push({
-                    pathname: "/reservar",
-                    params: {
-                      canchaId: String(item.id_cancha),
-                      complejoId: String(item.id_complejo),
-                    },
-                  })
-                }
-              >
-                <Ionicons
-                  name="calendar-outline"
-                  size={16}
-                  color={TEAL}
-                />
-                <Text style={styles.btnGhostTxt}>Reservar</Text>
-              </TouchableOpacity>
+              
 
               <TouchableOpacity
                 style={styles.btnPrimary}

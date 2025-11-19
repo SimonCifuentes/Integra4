@@ -490,18 +490,7 @@ export default function CanchasScreen() {
 
         <View style={styles.cardActionsRow}>
           {/* BOTÓN RESERVAR -> flujo de reserva de esa cancha */}
-          <TouchableOpacity
-            style={styles.btnGhost}
-            onPress={() =>
-              router.push({
-                pathname: "/(reservar)/reservar",
-                params: { canchaId: String(item.id_cancha) },
-              })
-            }
-          >
-            <Ionicons name="calendar-outline" size={16} color={TEAL} />
-            <Text style={styles.btnGhostTxt}>Reservar</Text>
-          </TouchableOpacity>
+          
 
           <TouchableOpacity
             style={styles.btnPrimary}

@@ -41,6 +41,11 @@ type ReservaUI = {
   notas?: string | null;
 };
 
+type AvatarMediaInfo = {
+  id_media: number;
+  url_publica: string;
+};
+
 /* ========= Auth helpers ========= */
 async function getToken() {
   try {
@@ -84,6 +89,32 @@ async function apiGet<T>(path: string): Promise<T> {
   const txt = await res.text();
   if (!res.ok) throw new Error(txt || `HTTP ${res.status}`);
   return txt ? JSON.parse(txt) : ({} as T);
+}
+
+/* ========= Helper PUT /media/{id_media} ========= */
+async function updateMediaFile(
+  id_media: number,
+  file: { uri: string; name: string; type: string }
+): Promise<any> {
+  const token = await getToken();
+  const formData = new FormData();
+  // el nombre del campo en Swagger es "file"
+  formData.append("file", file as any);
+
+  const res = await fetch(`${API_URL}/media/${id_media}`, {
+    method: "PUT",
+    headers: {
+      // en RN NO seteamos Content-Type manual para multipart
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData as any,
+  });
+
+  const txt = await res.text();
+  if (!res.ok) {
+    throw new Error(txt || `HTTP ${res.status}`);
+  }
+  return txt ? JSON.parse(txt) : {};
 }
 
 /* ========= Reservas ========= */
@@ -168,9 +199,13 @@ function normalizeRoleName(input?: string): string | null {
   if (["superadmin", "super-admin", "super_admin", "root"].includes(r))
     return "superadmin";
   if (
-    ["admin", "admin_general", "admin-general", "administrador", "administrator"].includes(
-      r
-    )
+    [
+      "admin",
+      "admin_general",
+      "admin-general",
+      "administrador",
+      "administrator",
+    ].includes(r)
   )
     return "admin_general";
   if (["admin_grupos", "groups_admin", "admin:grupos"].includes(r))
@@ -293,8 +328,10 @@ export default function PerfilScreen() {
   const [errorMe, setErrorMe] = useState<string | null>(null);
   const [noSession, setNoSession] = useState(false);
 
-  // 🔥 avatar que viene desde la API /media
+  // avatar que viene desde la API /media (url_publica + id_media)
   const [avatarFromMedia, setAvatarFromMedia] = useState<string | null>(null);
+  const [avatarMediaInfo, setAvatarMediaInfo] =
+    useState<AvatarMediaInfo | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -373,27 +410,30 @@ export default function PerfilScreen() {
 
         if (!list.length) return;
 
-        const principal =
-          list.find((m) => m.es_principal) ?? list[0];
+        const principal = list.find((m) => m.es_principal) ?? list[0];
 
         const url = principal?.url_publica as string | undefined;
+        const idMedia =
+          principal?.id_media ?? principal?.id ?? principal?.idMedia;
 
         if (url) {
           setAvatarFromMedia(url);
           setForm((prev) => ({ ...prev, avatar_url: url }));
         }
+        if (idMedia && url) {
+          setAvatarMediaInfo({ id_media: Number(idMedia), url_publica: url });
+        }
       } catch (err: any) {
-        console.log(
-          "Error cargando avatar desde /media:",
-          err?.message ?? err
-        );
+        console.log("Error cargando avatar desde /media:", err?.message ?? err);
       }
     })();
   }, [user?.id_usuario]);
 
-  /* --- Subir nueva foto de perfil --- */
-  const { mutate: uploadMedia, isPending: uploadingAvatar } =
+  /* --- Subir / actualizar foto de perfil --- */
+  const { mutate: uploadMedia, isPending: uploadingAvatarPost } =
     uploadHooks.useUploadMedia();
+
+  const [updatingAvatar, setUpdatingAvatar] = useState(false);
 
   const handleChangeAvatar = async () => {
     try {
@@ -414,6 +454,62 @@ export default function PerfilScreen() {
         type: (asset as any).mimeType || "image/jpeg",
       };
 
+      // Si ya existe una media, usamos PUT /media/{id_media}
+      if (avatarMediaInfo?.id_media) {
+        try {
+          setUpdatingAvatar(true);
+          const mediaUpdated = await updateMediaFile(
+            avatarMediaInfo.id_media,
+            file
+          );
+
+          const avatarUrl =
+            mediaUpdated?.url_publica || avatarMediaInfo.url_publica;
+
+          if (!avatarUrl) {
+            Alert.alert(
+              "Perfil",
+              "La imagen se actualizó, pero la API no devolvió url_publica."
+            );
+          }
+
+          if (avatarUrl) {
+            setAvatarFromMedia(avatarUrl);
+            setAvatarMediaInfo((prev) => ({
+              id_media:
+                mediaUpdated?.id_media ??
+                mediaUpdated?.id ??
+                prev?.id_media ??
+                avatarMediaInfo.id_media,
+              url_publica: avatarUrl,
+            }));
+            setForm((prev) => ({ ...prev, avatar_url: avatarUrl }));
+
+            try {
+              const payload = { avatar_url: avatarUrl };
+              const updated = await AuthAPI.updateMe(payload);
+              const nextUser =
+                updated && typeof updated === "object"
+                  ? { ...user!, ...updated }
+                  : { ...user!, ...payload };
+              await setUser(nextUser as Usuario);
+            } catch (err) {
+              console.log("Error actualizando usuario con nuevo avatar:", err);
+            }
+          }
+        } catch (err: any) {
+          const msg =
+            err?.message ||
+            err?.response?.data?.detail ||
+            "No se pudo actualizar la imagen.";
+          Alert.alert("Error", msg);
+        } finally {
+          setUpdatingAvatar(false);
+        }
+        return;
+      }
+
+      // Si NO existe media previa, usamos POST /media (hook useUploadMedia)
       uploadMedia(
         {
           target: "perfil",
@@ -435,7 +531,17 @@ export default function PerfilScreen() {
               return;
             }
 
-            // actualizar altiro lo que se ve
+            const idMedia =
+              media?.id_media ?? media?.id ?? media?.idMedia ?? null;
+
+            if (idMedia) {
+              setAvatarMediaInfo({
+                id_media: Number(idMedia),
+                url_publica: avatarUrl,
+              });
+            }
+
+            // actualizar lo que se ve
             setAvatarFromMedia(avatarUrl);
             setForm((prev) => ({ ...prev, avatar_url: avatarUrl }));
 
@@ -448,7 +554,7 @@ export default function PerfilScreen() {
                   : { ...user!, ...payload };
               await setUser(nextUser as Usuario);
             } catch (err) {
-              console.log(err);
+              console.log("Error actualizando usuario con nuevo avatar:", err);
             }
           },
           onError: (err: any) => {
@@ -467,6 +573,8 @@ export default function PerfilScreen() {
       );
     }
   };
+
+  const isUploadingAvatar = uploadingAvatarPost || updatingAvatar;
 
   /* --- Confirmar y guardar datos --- */
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -710,10 +818,10 @@ export default function PerfilScreen() {
             <TouchableOpacity
               style={styles.cameraButton}
               onPress={handleChangeAvatar}
-              disabled={uploadingAvatar}
+              disabled={isUploadingAvatar}
               activeOpacity={0.8}
             >
-              {uploadingAvatar ? (
+              {isUploadingAvatar ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Ionicons name="camera" size={18} color="#fff" />
@@ -807,8 +915,6 @@ export default function PerfilScreen() {
             </>
           )}
         </Section>
-
-        
 
         {/* Sesión */}
         <Section title="Sesión">
