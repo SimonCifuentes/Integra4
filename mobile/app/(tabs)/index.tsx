@@ -19,6 +19,8 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useCanchas } from "@/src/features/features/canchas/hooks";
 import { useComplejos } from "@/src/features/features/complejos/hooks";
+import { Ionicons } from "@expo/vector-icons";
+
 import { http } from "@/src/services/http";
 import {
   calcularRatingPorComplejo,
@@ -668,40 +670,178 @@ export default function HomeScreen() {
       </View>
 
       {/* Próximos eventos (placeholder) */}
-      <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+      {/* Próximos eventos */}
+      <View style={{ paddingHorizontal: 16, marginBottom: 24 }}>
+        {/* Título + mini acción */}
         <View
           style={{
             flexDirection: "row",
             alignItems: "center",
-            marginBottom: 12,
+            marginBottom: 10,
           }}
         >
           <Text style={{ fontSize: 18, fontWeight: "700" }}>
             Próximos eventos
           </Text>
+          <View style={{ flex: 1 }} />
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: 999,
+              backgroundColor: "#ecfeff",
+            }}
+          >
+            <Ionicons
+              name="calendar-outline"
+              size={14}
+              color={TEAL}
+              style={{ marginRight: 4 }}
+            />
+            <Text style={{ fontSize: 12, color: TEAL, fontWeight: "700" }}>
+              Ver calendario
+            </Text>
+          </View>
         </View>
 
-        <View style={{ gap: 8 }}>
-          {[1, 2].map((i) => (
+        {/* Cards de eventos */}
+        <View style={{ gap: 10 }}>
+          {[
+            {
+              id: 1,
+              titulo: "Partido amistoso Fútbol 7",
+              fecha: "Domingo 18:00",
+              cancha: "Cancha 1 · Complejo El Bosque",
+              deporte: "Fútbol 7",
+            },
+            {
+              id: 2,
+              titulo: "Mix Pádel nocturno",
+              fecha: "Sábado 20:30",
+              cancha: "Cancha 3 · Pádel Center",
+              deporte: "Pádel",
+            },
+          ].map((ev) => (
             <TouchableOpacity
-              key={i}
+              key={ev.id}
               style={{
-                backgroundColor: "#f9fafb",
-                borderRadius: 12,
+                backgroundColor: "#0f172a",
+                borderRadius: 14,
                 paddingVertical: 10,
                 paddingHorizontal: 12,
+                flexDirection: "row",
+                alignItems: "center",
               }}
+              activeOpacity={0.9}
             >
-              <Text style={{ fontWeight: "600" }}>
-                Evento deportivo {i}
-              </Text>
-              <Text style={{ fontSize: 12, color: "#64748b" }}>
-                Domingo 18:00 · Cancha {i}
-              </Text>
+              {/* Icono redondo izquierda */}
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: "rgba(45, 212, 191, 0.15)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 10,
+                }}
+              >
+                <Ionicons
+                  name="trophy-outline"
+                  size={20}
+                  color="#22c55e"
+                />
+              </View>
+
+              {/* Texto principal */}
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: "#e2e8f0",
+                    fontWeight: "700",
+                    fontSize: 14,
+                  }}
+                  numberOfLines={1}
+                >
+                  {ev.titulo}
+                </Text>
+
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginTop: 2,
+                  }}
+                >
+                  <Ionicons
+                    name="time-outline"
+                    size={12}
+                    color="#bfdbfe"
+                  />
+                  <Text
+                    style={{
+                      color: "#bfdbfe",
+                      fontSize: 12,
+                      marginLeft: 4,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {ev.fecha}
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginTop: 2,
+                  }}
+                >
+                  <Ionicons
+                    name="location-outline"
+                    size={12}
+                    color="#94a3b8"
+                  />
+                  <Text
+                    style={{
+                      color: "#94a3b8",
+                      fontSize: 12,
+                      marginLeft: 4,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {ev.cancha}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Chip de deporte */}
+              <View
+                style={{
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  borderRadius: 999,
+                  backgroundColor: "#022c22",
+                  marginLeft: 8,
+                }}
+              >
+                <Text
+                  style={{
+                    color: "#6ee7b7",
+                    fontSize: 11,
+                    fontWeight: "700",
+                  }}
+                >
+                  {ev.deporte}
+                </Text>
+              </View>
             </TouchableOpacity>
           ))}
         </View>
       </View>
+
     </ScrollView>
   );
 }

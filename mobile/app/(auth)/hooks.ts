@@ -1,13 +1,9 @@
-﻿import { useMutation, useQuery } from "@tanstack/react-query";
-import { AuthAPI } from "./api";
+import { useMutation } from "@tanstack/react-query";
 import { http } from "@/src/services/http";
 
-export function useMe() {
-  return useQuery({ queryKey:["auth","me"], queryFn: AuthAPI.me });
-}
-export function useLogin() {
-  return useMutation({ mutationFn: AuthAPI.login });
-}
+// ------------------------------
+// Olvidé mi contraseña
+// ------------------------------
 export function useForgotPassword() {
   return useMutation({
     mutationFn: async (payload: { email: string }) => {
